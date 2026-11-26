@@ -1,0 +1,349 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v2.0.0-beta.1)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark release as pre-release'
+        required: false
+        default: true
+        type: boolean
+      publish:
+        description: 'Actually create GitHub Release (false = dry-run artifacts only)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+
+jobs:
+  verify:
+    name: Verify tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run Python unit tests
+        run: python -m unittest discover -s tests -p "test_*.py" -v
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run desktop unit tests
+        run: node --test desktop/test/*.test.js
+
+      - name: Check desktop JavaScript syntax
+        run: node desktop/scripts/check-syntax.js
+
+  build-android:
+    name: Build Android APKs
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      # Every Gradle invocation passes -Pcommunity=true: no personal ntfy topic
+      # may end up in release assets.
+      ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Accept Android SDK licenses
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+
+      - name: Install Android platform 37 (best effort)
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platforms;android-37.0" "platforms;android-37" > /dev/null 2>&1 || true
+
+      - name: Create local.properties for AGP
+        working-directory: android
+        run: echo "sdk.dir=$ANDROID_HOME" > local.properties
+
+      - name: Run Android unit tests (both flavors)
+        working-directory: android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :app:testFullDebugUnitTest :app:testContextDebugUnitTest \
+            -Pcommunity=true --console=plain
+
+      - name: Detect signing secrets
+        id: secrets
+        run: |
+          signed=false
+          if [ -n "$ANDROID_KEYSTORE_B64" ] && [ -n "$ANDROID_KEYSTORE_PASSWORD" ] && [ -n "$ANDROID_KEY_ALIAS" ] && [ -n "$ANDROID_KEY_PASSWORD" ]; then
+            signed=true
+          fi
+          echo "signed=$signed" >> "$GITHUB_OUTPUT"
+
+      - name: Build signed release APKs
+        if: steps.secrets.outputs.signed == 'true'
+        working-directory: android
+        run: |
+          ver="${RELEASE_TAG#v}"
+          printf '%s' "$ANDROID_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          chmod 600 "$RUNNER_TEMP/release.jks"
+          printf 'storeFile=%s\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
+            "$RUNNER_TEMP/release.jks" "$ANDROID_KEYSTORE_PASSWORD" "$ANDROID_KEY_ALIAS" "$ANDROID_KEY_PASSWORD" \
+            > "$RUNNER_TEMP/keystore.properties"
+          chmod 600 "$RUNNER_TEMP/keystore.properties"
+          # --no-daemon: a daemon started by the unit-test step does not refresh
+          # its environment, so the signing variable must be read by a fresh JVM.
+          AGW_KEYSTORE_PROPERTIES="$RUNNER_TEMP/keystore.properties" \
+            ./gradlew :app:assembleFullRelease :app:assembleContextRelease \
+              -Pcommunity=true --no-configuration-cache --no-daemon --console=plain
+          mkdir -p dist
+          cp app/build/outputs/apk/full/release/app-full-release.apk "dist/AG-Widgets-${ver}.apk"
+          cp app/build/outputs/apk/context/release/app-context-release.apk "dist/AG-Context-${ver}.apk"
+
+      - name: Build community debug APKs
+        if: steps.secrets.outputs.signed != 'true'
+        working-directory: android
+        run: |
+          ver="${RELEASE_TAG#v}"
+          chmod +x ./gradlew
+          ./gradlew :app:assembleFullDebug :app:assembleContextDebug -Pcommunity=true --console=plain
+          mkdir -p dist
+          cp app/build/outputs/apk/full/debug/app-full-debug.apk "dist/AG-Widgets-${ver}-community-debug.apk"
+          cp app/build/outputs/apk/context/debug/app-context-debug.apk "dist/AG-Context-${ver}-community-debug.apk"
+
+      - name: Clean up signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.jks" "$RUNNER_TEMP/keystore.properties" || true
+
+      - name: Verify zero leaks (both flavors)
+        env:
+          SIGNED: ${{ steps.secrets.outputs.signed }}
+        run: |
+          set -euo pipefail
+          buildType=debug
+          if [ "$SIGNED" = "true" ]; then
+            buildType=release
+          fi
+          for spec in "full:dev.agwidgets:true" "context:dev.agwidgets.context:false"; do
+            IFS=: read -r flavor appid zcode <<< "$spec"
+            f="android/app/build/generated/source/buildConfig/$flavor/$buildType/dev/agwidgets/BuildConfig.java"
+            test -f "$f" || { echo "missing $f"; exit 1; }
+            grep -q "APPLICATION_ID = \"$appid\"" "$f" || { echo "unexpected APPLICATION_ID in $f"; exit 1; }
+            grep -q 'AGW_TOPIC = ""' "$f" || { echo "AGW_TOPIC is not empty in $f"; exit 1; }
+            grep -q "ZCODE_ENABLED = $zcode" "$f" || { echo "unexpected ZCODE_ENABLED in $f"; exit 1; }
+            echo "OK: $flavor ($appid, zcode=$zcode, buildType=$buildType)"
+          done
+          if grep -q 'agw.topic' android/local.properties; then
+            echo "personal topic leaked into local.properties"
+            exit 1
+          fi
+          echo "OK: local.properties contains no agw.topic"
+
+      - name: Warn on versionName mismatch
+        run: |
+          ver="${RELEASE_TAG#v}"
+          gradle_version=$(grep -oP 'versionName\s*=\s*"\K[^"]+' android/app/build.gradle.kts | head -n 1 || true)
+          if [ "$gradle_version" != "$ver" ]; then
+            msg="Release tag ${RELEASE_TAG} does not match versionName '${gradle_version}' in android/app/build.gradle.kts; APKs are built with versionName '${gradle_version}' because the Gradle file is intentionally unchanged in this PR."
+            echo "::warning::${msg}"
+            {
+              echo "### versionName mismatch"
+              echo
+              echo "$msg"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apks
+          path: android/dist/*.apk
+          if-no-files-found: error
+
+  build-windows:
+    name: Build Windows portable ZIP
+    needs: verify
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run Python unit tests (including DPAPI)
+        run: python -m unittest discover -s tests -p "test_*.py" -v
+
+      - name: Package Windows portable ZIP
+        run: |
+          pwsh -File scripts/package-windows.ps1 -Version "$env:RELEASE_TAG" -OutputDir dist
+          if ($LASTEXITCODE -ne 0) {
+            throw "scripts/package-windows.ps1 failed with exit code $LASTEXITCODE"
+          }
+
+      - name: Upload Windows portable ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-portable
+          path: dist/ag-widgets-*-windows-x64.zip
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish release
+    needs: [build-android, build-windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-apks
+          path: release-assets
+          merge-multiple: true
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-portable
+          path: release-assets
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: |
+          set -euo pipefail
+          cd release-assets
+          rm -f SHA256SUMS.txt
+          for f in *; do
+            [ -f "$f" ] || continue
+            case "$f" in
+              *.sha256|SHA256SUMS.txt) continue ;;
+            esac
+            sha256sum "$f" | awk '{print $1"  "$2}' > "$f.sha256"
+          done
+          mapfile -t files < <(printf '%s\n' * | LC_ALL=C sort)
+          : > SHA256SUMS.txt
+          for f in "${files[@]}"; do
+            [ -f "$f" ] || continue
+            case "$f" in
+              *.sha256|SHA256SUMS.txt) continue ;;
+            esac
+            sha256sum "$f" >> SHA256SUMS.txt
+          done
+          echo "SHA256SUMS.txt:"
+          cat SHA256SUMS.txt
+
+      - name: Upload checksum manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-checksums
+          path: release-assets/SHA256SUMS.txt
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: github.event_name == 'push' || inputs.publish == true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          INPUT_PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          set -euo pipefail
+          is_prerelease=false
+          case "$RELEASE_TAG" in
+            *-*) is_prerelease=true ;;
+          esac
+          if [ "$INPUT_PRERELEASE" = "true" ]; then
+            is_prerelease=true
+          fi
+          prerelease_flag=()
+          if [ "$is_prerelease" = "true" ]; then
+            prerelease_flag=(--prerelease)
+          fi
+          gh release create "$RELEASE_TAG" release-assets/* \
+            --title "AG Widgets $RELEASE_TAG" \
+            --generate-notes \
+            "${prerelease_flag[@]}"
+
+          {
+            echo
+            echo "## SHA256SUMS"
+            echo
+            echo '```text'
+            cat release-assets/SHA256SUMS.txt
+            echo '```'
+            echo
+            echo "Community builds are produced with \`-Pcommunity=true\` and do not embed a personal ntfy topic."
+            echo
+            echo "- \`AG-Widgets-<version>.apk\` - full app for Antigravity + ZCode (\`dev.agwidgets\`)."
+            echo "- \`AG-Context-<version>.apk\` - Antigravity only (\`dev.agwidgets.context\`)."
+            echo "- The Windows portable ZIP bundles Electron and does not require Node.js to be installed."
+          } > release-notes-appendix.md
+
+          # Capture the auto-generated notes first, then append the checksum block.
+          gh release view "$RELEASE_TAG" --json body -q .body > release-notes.md
+          cat release-notes-appendix.md >> release-notes.md
+          gh release edit "$RELEASE_TAG" --notes-file release-notes.md
+
+      - name: Dry-run summary
+        if: github.event_name != 'push' && inputs.publish != true
+        run: |
+          set -euo pipefail
+          ver="${RELEASE_TAG#v}"
+          ls -l release-assets
+          {
+            echo "## Release dry run: ${RELEASE_TAG}"
+            echo
+            echo "- Version: \`${ver}\`"
+            echo "- Tag: \`${RELEASE_TAG}\`"
+            echo
+            echo "**Dry run: no GitHub Release was created (publish=false).**"
+            echo
+            echo "### Artifacts"
+            echo
+            echo '```text'
+            ls -1 release-assets
+            echo '```'
+            echo
+            echo "### SHA256SUMS"
+            echo
+            echo '```text'
+            cat release-assets/SHA256SUMS.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
