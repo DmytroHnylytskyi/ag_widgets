@@ -6,6 +6,9 @@
 .DESCRIPTION
     Runtime configuration and secrets are written to
     %LOCALAPPDATA%\ag-widgets, never into the repository.
+    An unpacked portable archive already contains
+    desktop\node_modules\electron\dist\electron.exe, so Node.js and npm ci are
+    not required there.
     -DryRun prints every action as "[dry-run] <action>" and changes nothing.
     -Uninstall reverts the Antigravity integration and removes the shortcuts;
     %LOCALAPPDATA%\ag-widgets is kept and reported at the end.
@@ -328,7 +331,13 @@ if ($pythonExitCode -ne 0) {
 }
 $pythonVersion = (& $PythonPath -c "import sys; print('.'.join(str(part) for part in sys.version_info[:3]))" 2>$null | Out-String).Trim()
 
-Test-NodeDependencies
+$DesktopDir = Join-Path $Root "desktop"
+$ElectronExe = Join-Path $DesktopDir "node_modules\electron\dist\electron.exe"
+$HasBundledElectron = Test-Path -LiteralPath $ElectronExe
+
+if (-not $HasBundledElectron) {
+    Test-NodeDependencies
+}
 
 Write-Step "Python: $pythonVersion ($PythonPath)"
 Write-Step "Project: $Root"
@@ -475,13 +484,11 @@ print(f"[OK] Python path saved in {config_path}")
 }
 
 # 4. Electron dependencies.
-$DesktopDir = Join-Path $Root "desktop"
 $ElectronDir = Join-Path $DesktopDir "node_modules\electron"
-$ElectronExe = Join-Path $DesktopDir "node_modules\electron\dist\electron.exe"
 $ElectronInstallScript = Join-Path $DesktopDir "node_modules\electron\install.js"
 $LockPath = Join-Path $DesktopDir "package-lock.json"
-if ((Test-Path -LiteralPath $ElectronDir) -and (Test-Path -LiteralPath $ElectronExe)) {
-    Write-Host "[OK] Electron dependencies and binary already installed"
+if ($HasBundledElectron) {
+    Write-Host "[OK] Pre-bundled Electron runtime found; skipping npm ci."
 } else {
     if (-not (Test-Path -LiteralPath $ElectronDir)) {
         if (-not (Test-Path -LiteralPath $LockPath)) {
