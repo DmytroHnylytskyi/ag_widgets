@@ -347,7 +347,10 @@ class ReleaseWorkflowStaticTests(unittest.TestCase):
         for marker in ("SHA256SUMS.txt", ".sha256", "sha256sum"):
             self.assertIn(marker, text, f"checksum marker {marker!r} is missing")
         self.assertIn("gh release create", text, "gh release create is missing")
+        self.assertIn("--target \"$GITHUB_SHA\"", text, "gh release create must pin --target \"$GITHUB_SHA\"")
         self.assertIn("--generate-notes", text, "release notes generation is missing")
+        self.assertIn("tr -d ' \\t\\r\\n' | base64 -d", text, "keystore base64 decode must tolerate CRLF/whitespace")
+        self.assertIn("Validate release tag", text, "verify job must validate RELEASE_TAG early")
 
     def test_permissions_are_least_privilege(self) -> None:
         text = self._text()
@@ -745,6 +748,23 @@ class WindowsPackagerRuntimeTests(unittest.TestCase):
                     needle,
                     portable,
                     f"PORTABLE.txt does not mention {needle!r}:\n{portable}",
+                )
+
+    def test_rejects_invalid_versions(self) -> None:
+        if not PACKAGER.exists():
+            self.skipTest(f"{PACKAGER} is not present yet")
+
+        for bad_version in ("v", "..", "v..", "1.0/../2.0"):
+            with self.subTest(version=bad_version):
+                result = self._run(
+                    PACKAGER,
+                    ["-Version", bad_version, "-DryRun"],
+                    cwd=ROOT,
+                )
+                self.assertNotEqual(
+                    result.returncode,
+                    0,
+                    f"expected failure for invalid version {bad_version!r}\n{_describe(result)}",
                 )
 
     def test_installer_dry_run_exit_zero(self) -> None:

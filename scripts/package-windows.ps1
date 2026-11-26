@@ -123,7 +123,7 @@ function Test-ExcludedRelativePath([string]$RelativePath) {
 }
 
 function Get-PackagingPlan {
-    $plan = @()
+    $plan = New-Object System.Collections.ArrayList
     foreach ($fileName in $RootFileAllowlist) {
         $sourcePath = Join-Path $Root $fileName
         if (-not (Test-Path -LiteralPath $sourcePath)) {
@@ -133,10 +133,10 @@ function Get-PackagingPlan {
             Write-Warning "Optional root file '$fileName' is missing; skipping it."
             continue
         }
-        $plan += [pscustomobject]@{
+        [void]$plan.Add([pscustomobject]@{
             Source = $sourcePath
             Relative = $fileName
-        }
+        })
     }
     foreach ($directoryName in $DirectoryAllowlist) {
         $sourceDirectory = Join-Path $Root $directoryName
@@ -150,21 +150,21 @@ function Get-PackagingPlan {
             if (Test-ExcludedRelativePath -RelativePath $rootRelative) {
                 continue
             }
-            $plan += [pscustomobject]@{
+            [void]$plan.Add([pscustomobject]@{
                 Source = $file.FullName
                 Relative = $rootRelative
-            }
+            })
         }
     }
-    return $plan
+    return $plan.ToArray()
 }
 
 # ------------------------------------------------------------ input validation
 
-if ($Version -notmatch '^v?[0-9A-Za-z._-]+$') {
+$ver = $Version -replace '^v', ''
+if ($Version -notmatch '^v?[0-9A-Za-z][0-9A-Za-z._-]*$' -or [string]::IsNullOrEmpty($ver) -or $ver -match '\.\.') {
     throw "Version '$Version' is not valid. Use a value such as v2.0.0 or 2.0.0."
 }
-$ver = $Version -replace '^v', ''
 
 $requiredPaths = @(
     (Join-Path $Root "agwidgets"),
@@ -250,7 +250,7 @@ if ($DryRun) {
 
 # ------------------------------------------------------------------- real build
 
-$entries = @()
+$entries = New-Object System.Collections.ArrayList
 try {
     Write-Step "Staging files"
     New-Item -ItemType Directory -Force -Path $stageDir | Out-Null
@@ -308,7 +308,7 @@ try {
             if ($entry.Name -ne "") {
                 $fileEntryCount++
             }
-            $entries += ($entry.FullName -replace '\\', '/')
+            [void]$entries.Add(($entry.FullName -replace '\\', '/'))
         }
     } finally {
         $archive.Dispose()
@@ -331,8 +331,8 @@ try {
     }
 
     $forbiddenSegments = @(".git", "android", "tests", ".github", "__pycache__")
-    $forbiddenFileNames = @("secrets.json", "config.json", "local.properties", "keystore.properties")
-    $forbiddenSuffixes = @(".pyc", ".log", ".tmp", ".jks")
+    $forbiddenFileNames = @("secrets.json", "config.json", "local.properties", "keystore.properties", "status.json", "context.json")
+    $forbiddenSuffixes = @(".pyc", ".pyo", ".log", ".tmp", ".jks")
     $violations = @()
     foreach ($entryName in $entries) {
         $segments = $entryName -split '/'
