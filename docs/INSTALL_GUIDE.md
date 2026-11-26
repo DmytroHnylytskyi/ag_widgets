@@ -155,8 +155,20 @@ The `v1.0.0` release ships both signed community APKs, so no build tools are nee
 
 - **AG Widgets 1.0.0** (Antigravity + ZCode): [`AG-Widgets-1.0.0.apk`](https://github.com/DmytroHnylytskyi/ag_widgets/releases/latest/download/AG-Widgets-1.0.0.apk)
 - **AG Context 1.0.0** (Antigravity only): [`AG-Context-1.0.0.apk`](https://github.com/DmytroHnylytskyi/ag_widgets/releases/latest/download/AG-Context-1.0.0.apk)
+- **Windows portable**: `ag-widgets-<ver>-windows-x64.zip` from the [releases page](https://github.com/DmytroHnylytskyi/ag_widgets/releases/latest) — unzip it anywhere and run `.\install.ps1`. Node.js is **not** required: Electron is bundled in the archive.
 
-Each APK has a `.sha256` checksum attached to the release; verify it before installing. Both are community builds with no personal ntfy topic inside.
+The portable ZIP is the same desktop widget, collector sidecar and Antigravity hook as the clone-based install, minus the `npm ci` step; the installer creates the **AG Widgets** shortcuts. Both APKs are community builds with no personal ntfy topic inside.
+
+Each artifact comes with a `<file>.sha256` beside it in the release, plus a combined `SHA256SUMS.txt`. Verify before installing:
+
+```powershell
+Get-FileHash -Algorithm SHA256 .\AG-Widgets-<ver>.apk
+Get-Content .\AG-Widgets-<ver>.apk.sha256
+```
+
+```bash
+sha256sum -c AG-Widgets-<ver>.apk.sha256
+```
 
 ### 3.2 Build the community APKs
 

@@ -117,3 +117,73 @@ outside the repository, and never attach it to a public release:
    (or `assembleFullDebug` for a debug build).
 3. Copy the APK to `%LOCALAPPDATA%\ag-widgets\`.
 4. Remove `agw.topic` from `local.properties` immediately afterwards.
+
+## Automated GitHub Releases
+
+`.github/workflows/release.yml` builds and publishes every asset in one run:
+
+| Job | What it does |
+|---|---|
+| `verify` | Python tests and the Desktop tests (`node --test desktop/test/*.test.js`). |
+| `build-android` | Both flavors, `-Pcommunity=true --no-configuration-cache`. |
+| `build-windows` | Portable ZIP via `scripts/package-windows.ps1`. |
+| `publish-release` | Per-file SHA-256 checksums, `SHA256SUMS.txt`, `gh release create`. |
+
+Triggers:
+
+| Trigger | Behaviour |
+|---|---|
+| Push of a `v*` tag | Builds and publishes the release automatically. |
+| `workflow_dispatch` | Manual run. `publish` defaults to `false`: a safe dry-run that leaves the artifacts in Actions and creates no release; `prerelease` defaults to `true`. |
+
+### Signing secrets (optional)
+
+| Secret | Meaning |
+|---|---|
+| `ANDROID_KEYSTORE_B64` | base64 of `ag-widgets-release.jks` |
+| `ANDROID_KEYSTORE_PASSWORD` | `storePassword` |
+| `ANDROID_KEY_ALIAS` | `keyAlias` (`agwidgets`) |
+| `ANDROID_KEY_PASSWORD` | `keyPassword` |
+
+With all four present the workflow decodes them into `$RUNNER_TEMP/release.jks`
+and `$RUNNER_TEMP/keystore.properties`, hands Gradle the properties file through
+`AGW_KEYSTORE_PROPERTIES` (the same override described in `Signing key`) and
+deletes both temporary files in a step marked `if: always()`. Without the secrets
+the workflow produces `*-community-debug.apk`. Secret values are never echoed
+into the log.
+
+### Artifact names
+
+```text
+AG-Widgets-<ver>.apk                       dev.agwidgets, signed
+AG-Widgets-<ver>-community-debug.apk       no keystore secrets
+AG-Context-<ver>.apk                       dev.agwidgets.context, signed
+AG-Context-<ver>-community-debug.apk       no keystore secrets
+ag-widgets-<ver>-windows-x64.zip           portable desktop build
+<file>.sha256                              one per asset
+SHA256SUMS.txt                             all checksums
+```
+
+### Zero-leak checks in the workflow
+
+- `android/local.properties` is generated with `sdk.dir` only — no `agw.topic`.
+- Both generated `BuildConfig.java` files are compared against the expected
+  `APPLICATION_ID`, `AGW_TOPIC` (`""`) and `ZCODE_ENABLED`, so a personal topic
+  cannot reach a published APK.
+
+### Windows portable ZIP
+
+`scripts/package-windows.ps1 -Version <tag> -OutputDir dist` builds the archive
+from a whitelist: `.git/`, `android/`, `tests/`, `.github/`, `local.properties`,
+`secrets.json`, `__pycache__/` and `*.pyc` are physically absent from the ZIP.
+Electron is bundled, so the receiving machine needs no Node.js; `PORTABLE.txt`
+inside the archive explains the first run.
+
+### Check before publishing
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 -Version v0.0.0-test -DryRun
+```
+
+Then run the workflow manually on a fork with `publish: false` and inspect the
+artifacts in Actions before pushing the tag.
