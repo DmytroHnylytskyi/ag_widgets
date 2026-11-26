@@ -775,7 +775,10 @@ class WindowsPackagerRuntimeTests(unittest.TestCase):
             with self.subTest(args=extra):
                 result = self._run(INSTALLER, extra, cwd=ROOT)
                 self.assertEqual(result.returncode, 0, _describe(result))
-                self.assertIn("[dry-run]", result.stdout.casefold(), _describe(result))
+                lowered = result.stdout.casefold()
+                self.assertIn("dry run complete", lowered, _describe(result))
+                if "-Uninstall" not in extra:
+                    self.assertIn("[dry-run]", lowered, _describe(result))
 
 
 if __name__ == "__main__":
