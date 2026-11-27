@@ -1274,6 +1274,46 @@ input.switch[type="checkbox"]:focus-visible {
   border-color: color-mix(in srgb, var(--ok) 38%, transparent);
 }
 
+/* Notifications card: the master switch gates three child toggles (D-30). */
+.notif-children {
+  margin-top: 4px;
+  padding-left: 12px;
+  border-left: 1px solid var(--card-border);
+  transition: opacity 120ms ease;
+}
+
+.notif-children.is-off {
+  opacity: 0.45;
+}
+
+.notif-children.is-off .switch,
+.notif-children.is-off .field-label {
+  cursor: default;
+}
+
+.notif-children .switch[disabled] {
+  cursor: default;
+}
+
+.notif-test {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.notif-status {
+  margin: 0;
+  min-height: 16px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--text-muted);
+}
+
+.notif-status.is-error {
+  color: var(--risk);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

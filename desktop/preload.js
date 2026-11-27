@@ -24,6 +24,8 @@ contextBridge.exposeInMainWorld('agWidgets', {
   getSettings: () => ipcRenderer.invoke('agw:get-settings'),
   /** Patch appearance and/or window flags; resolves to the fresh snapshot. */
   updateSettings: (patch) => ipcRenderer.invoke('agw:update-settings', patch),
+  /** Fire one native Windows notification to verify the channel. */
+  testNotification: () => ipcRenderer.invoke('agw:test-notification'),
   /** Reset appearance.json to defaults; resolves to the fresh snapshot. */
   resetAppearance: () => ipcRenderer.invoke('agw:reset-appearance'),
   /** Apply a built-in widget preset (`full`, `compact`, `minibar`, `pill`, …). */

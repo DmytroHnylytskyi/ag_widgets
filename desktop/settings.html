@@ -181,6 +181,37 @@
             </div>
           </div>
         </section>
+
+        <section class="panel" aria-labelledby="notifications-heading">
+          <h2 id="notifications-heading" class="panel-title">Уведомления Windows</h2>
+
+          <div class="switch-list">
+            <div class="switch-row">
+              <span id="notif-enabled-label" class="field-label">Показывать уведомления</span>
+              <button id="notif-enabled" class="switch" type="button" role="switch" aria-checked="true" aria-labelledby="notif-enabled-label"></button>
+            </div>
+          </div>
+
+          <div id="notif-children" class="switch-list notif-children">
+            <div class="switch-row">
+              <span id="notif-context-red-label" class="field-label">Контекст в красной зоне (/compact)</span>
+              <button id="notif-context-red" class="switch" type="button" role="switch" aria-checked="true" aria-labelledby="notif-context-red-label"></button>
+            </div>
+            <div class="switch-row">
+              <span id="notif-zcode-voucher-label" class="field-label">Доступен ваучер ZCode</span>
+              <button id="notif-zcode-voucher" class="switch" type="button" role="switch" aria-checked="true" aria-labelledby="notif-zcode-voucher-label"></button>
+            </div>
+            <div class="switch-row">
+              <span id="notif-quota-reset-label" class="field-label">Сброс 5-часовой квоты</span>
+              <button id="notif-quota-reset" class="switch" type="button" role="switch" aria-checked="true" aria-labelledby="notif-quota-reset-label"></button>
+            </div>
+          </div>
+
+          <div class="notif-test">
+            <button id="notif-test" class="ghost-btn" type="button">Проверить уведомление</button>
+            <p id="notif-status" class="notif-status" role="status" aria-live="polite"></p>
+          </div>
+        </section>
       </section>
 
       <section id="panel-builder" class="tabpanel hidden" role="tabpanel" aria-labelledby="tab-builder">

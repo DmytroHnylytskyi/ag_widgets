@@ -44,6 +44,39 @@ function windowApi() {
   }
 }
 
+/** Notification prefs are pure Node; lazy for symmetry with the other helpers. */
+function notificationsApi() {
+  try {
+    return require('./notifications');
+  } catch {
+    return null;
+  }
+}
+
+/** Current notification toggle; `true` when prefs cannot be read. */
+function currentNotificationsEnabled() {
+  const api = notificationsApi();
+  if (!api || typeof api.getPreferences !== 'function') return true;
+  try {
+    return api.getPreferences().enabled !== false;
+  } catch {
+    return true;
+  }
+}
+
+function toggleNotifications(checked) {
+  const api = notificationsApi();
+  if (api && typeof api.updatePreferences === 'function') {
+    try {
+      api.updatePreferences({ enabled: Boolean(checked) });
+    } catch {
+      // A read-only profile must not break the tray menu.
+    }
+  }
+  refreshMenu();
+  syncSettingsWindow();
+}
+
 function currentWindow() {
   const api = windowApi();
   if (!api || typeof api.getWindow !== 'function') return null;
@@ -218,6 +251,7 @@ function buildMenuTemplate({
   windowVisible = true,
   alwaysOnTop = false,
   openAtLogin = false,
+  notificationsEnabled = true,
   zcodeConnected = false,
   presetMode = 'full',
   handlers = {},
@@ -225,6 +259,7 @@ function buildMenuTemplate({
   const isWindowMenu = source === 'window';
   const alwaysOnTopChecked = Boolean(alwaysOnTop);
   const openAtLoginChecked = Boolean(openAtLogin);
+  const notificationsChecked = notificationsEnabled !== false;
   const template = [];
 
   // The popup menu is opened from the visible window itself, so restoring it
@@ -262,6 +297,17 @@ function buildMenuTemplate({
         const handler = pickHandler(handlers.toggleOpenAtLogin, toggleOpenAtLogin);
         const checked =
           item && typeof item.checked === 'boolean' ? item.checked : !openAtLoginChecked;
+        return handler(checked);
+      },
+    },
+    {
+      label: 'Уведомления',
+      type: 'checkbox',
+      checked: notificationsChecked,
+      click: (item) => {
+        const handler = pickHandler(handlers.toggleNotifications, toggleNotifications);
+        const checked =
+          item && typeof item.checked === 'boolean' ? item.checked : !notificationsChecked;
         return handler(checked);
       },
     },
@@ -321,6 +367,7 @@ function buildMenu(options = {}) {
     windowVisible,
     alwaysOnTop,
     openAtLogin,
+    notificationsEnabled: currentNotificationsEnabled(),
     zcodeConnected: isZCodeConnected(),
     presetMode: currentPresetMode(),
     handlers: options.handlers || {},

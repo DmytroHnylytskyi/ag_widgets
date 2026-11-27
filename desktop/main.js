@@ -7,6 +7,7 @@ const { logError } = require('./src/main/logger');
 const zcodeAuth = require('./src/main/zcode-auth');
 const { registerIpc, buildSettingsSnapshot } = require('./src/main/ipc');
 const { createTray } = require('./src/main/tray');
+const notifications = require('./src/main/notifications');
 const windowApi = require('./src/main/window');
 
 process.on('uncaughtException', (error) => logError('uncaughtException', error));
@@ -71,7 +72,23 @@ if (!gotLock) {
     windowApi.createWindow();
     createTray();
 
-    const refreshRenderer = () => windowApi.pushState(readAllState());
+    // The first snapshot only seeds the baseline: no alerts for state that was
+    // already on disk when Windows started the app.
+    try {
+      notifications.handleStateUpdate(readAllState());
+    } catch (error) {
+      logError('notifications', error);
+    }
+
+    const refreshRenderer = () => {
+      const state = readAllState();
+      windowApi.pushState(state);
+      try {
+        notifications.handleStateUpdate(state);
+      } catch (error) {
+        logError('notifications', error);
+      }
+    };
     stopWatching = startWatchers(
       refreshRenderer,
       () => maybePublishActiveChat(refreshRenderer),

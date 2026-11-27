@@ -223,9 +223,12 @@ test('buildMenuTemplate puts "Настройки…" after the checkboxes and be
 
   const settingsIndex = template.findIndex((item) => item.label === 'Настройки…');
   const openAtLoginIndex = template.findIndex((item) => item.label === 'Запускать при входе');
+  const notificationsIndex = template.findIndex((item) => item.label === 'Уведомления');
 
   assert.ok(settingsIndex > -1, 'the Settings item must exist');
-  assert.equal(settingsIndex, openAtLoginIndex + 1, 'it goes right after the checkboxes');
+  assert.ok(notificationsIndex > -1, 'the notifications checkbox must exist');
+  assert.equal(notificationsIndex, openAtLoginIndex + 1, 'it goes right after the checkboxes');
+  assert.equal(settingsIndex, notificationsIndex + 1, 'it goes right after the notifications row');
   assert.equal(template[settingsIndex + 1].type, 'separator');
 
   template[settingsIndex].click();

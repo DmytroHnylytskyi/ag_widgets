@@ -8,6 +8,7 @@ const zcodeAuth = require('./zcode-auth');
 const pairing = require('./pairing');
 const windowApi = require('./window');
 const appearance = require('./appearance');
+const notifications = require('./notifications');
 const { copyTextToClipboard } = require('./clipboard');
 const { logError } = require('./logger');
 const { refreshMenu, showContextMenu, loginItemOptions } = require('./tray');
@@ -26,6 +27,9 @@ const APPEARANCE_KEYS = [
   'font_scale',
   'opacity',
 ];
+
+/** Boolean notification toggles the renderer may change. */
+const NOTIFICATION_KEYS = ['enabled', 'context_red', 'zcode_voucher', 'quota_5h_reset'];
 
 /** Fixed enum of external targets; the renderer can never pass a raw path or URL. */
 const EXTERNAL_ACTIONS = {
@@ -66,12 +70,26 @@ function buildSettingsSnapshot() {
     logError('settings-snapshot-login-item', error);
   }
 
+  let notificationPrefs = {
+    enabled: true,
+    context_red: true,
+    zcode_voucher: true,
+    quota_5h_reset: true,
+  };
+  try {
+    notificationPrefs = notifications.getPublicPreferences();
+  } catch (error) {
+    logError('settings-snapshot-notifications', error);
+  }
+
   return {
     appearance: settings,
     effectiveTheme: appearance.resolveEffectiveTheme(settings, systemDark),
     systemDark,
     alwaysOnTop,
     openAtLogin,
+    /** Notification toggles only; dedup state never leaves main. */
+    notifications: notificationPrefs,
     /** Size constraints of the current form factor (used by the Settings window). */
     bounds: appearance.formFactorBounds(settings.preset_mode),
     /** Built-in presets in display order, without their patches. */
@@ -210,6 +228,11 @@ function registerIpc() {
   );
 
   ipcMain.handle(
+    'agw:test-notification',
+    fromTrustedWindow(() => notifications.sendTestNotification()),
+  );
+
+  ipcMain.handle(
     'agw:update-settings',
     fromTrustedWindow((_event, patch) => {
       if (!patch || typeof patch !== 'object' || Array.isArray(patch)) {
@@ -233,6 +256,24 @@ function registerIpc() {
           app.setLoginItemSettings({ openAtLogin: patch.openAtLogin, ...loginItemOptions() });
         } catch (error) {
           logError('setLoginItemSettings', error);
+        }
+      }
+
+      if (
+        patch.notifications &&
+        typeof patch.notifications === 'object' &&
+        !Array.isArray(patch.notifications)
+      ) {
+        const clean = {};
+        for (const key of NOTIFICATION_KEYS) {
+          if (typeof patch.notifications[key] === 'boolean') clean[key] = patch.notifications[key];
+        }
+        if (Object.keys(clean).length) {
+          try {
+            notifications.updatePreferences(clean);
+          } catch (error) {
+            logError('updateNotifications', error);
+          }
         }
       }
 

@@ -78,6 +78,13 @@
     jsonStatus: byId('json-status'),
     alwaysOnTop: byId('always-on-top'),
     openAtLogin: byId('open-at-login'),
+    notifEnabled: byId('notif-enabled'),
+    notifChildren: byId('notif-children'),
+    notifContextRed: byId('notif-context-red'),
+    notifZcodeVoucher: byId('notif-zcode-voucher'),
+    notifQuotaReset: byId('notif-quota-reset'),
+    notifTest: byId('notif-test'),
+    notifStatus: byId('notif-status'),
     reset: byId('reset-appearance'),
     error: byId('settings-error'),
     syncNtfyToggle: byId('sync-ntfy-toggle'),
@@ -104,6 +111,7 @@
     blocks: [],
     alwaysOnTop: false,
     openAtLogin: false,
+    notifications: null,
   };
 
   let queue = Promise.resolve();
@@ -333,6 +341,93 @@
     button.classList.toggle('is-on', Boolean(on));
   }
 
+  /** Notification toggles; a stale bridge without the field keeps all three on. */
+  const NOTIFICATION_DEFAULTS = {
+    enabled: true,
+    context_red: true,
+    zcode_voucher: true,
+    quota_5h_reset: true,
+  };
+  const NOTIF_STATUS_MS = 4000;
+  let notifStatusTimer = null;
+
+  function normalizeNotifications(raw) {
+    const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+    const next = {};
+    Object.keys(NOTIFICATION_DEFAULTS).forEach(function (key) {
+      next[key] = typeof source[key] === 'boolean' ? source[key] : NOTIFICATION_DEFAULTS[key];
+    });
+    return next;
+  }
+
+  function setNotifStatus(message, isError) {
+    if (!el.notifStatus) return;
+    el.notifStatus.textContent = message || '';
+    el.notifStatus.classList.toggle('is-error', Boolean(isError));
+    if (notifStatusTimer) clearTimeout(notifStatusTimer);
+    if (!message) return;
+    notifStatusTimer = setTimeout(function () {
+      notifStatusTimer = null;
+      if (el.notifStatus) {
+        el.notifStatus.textContent = '';
+        el.notifStatus.classList.remove('is-error');
+      }
+    }, NOTIF_STATUS_MS);
+  }
+
+  /** Paint the master switch, dim and lock the children when it is off. */
+  function renderNotifications() {
+    const prefs = state.notifications || normalizeNotifications(null);
+    const locked = prefs.enabled === false;
+    setSwitch(el.notifEnabled, prefs.enabled);
+    setSwitch(el.notifContextRed, prefs.context_red);
+    setSwitch(el.notifZcodeVoucher, prefs.zcode_voucher);
+    setSwitch(el.notifQuotaReset, prefs.quota_5h_reset);
+    if (el.notifChildren) el.notifChildren.classList.toggle('is-off', locked);
+    [el.notifContextRed, el.notifZcodeVoucher, el.notifQuotaReset, el.notifTest]
+      .forEach(function (node) {
+        if (node) node.disabled = locked;
+      });
+  }
+
+  function setNotificationFlag(key, value) {
+    const next = normalizeNotifications(state.notifications);
+    if (!Object.prototype.hasOwnProperty.call(next, key)) return;
+    next[key] = Boolean(value);
+    state.notifications = next;
+    renderNotifications();
+    setNotifStatus('', false);
+    applyPatch({ notifications: next });
+  }
+
+  function handleTestNotification() {
+    if (!el.notifTest) return;
+    const prefs = normalizeNotifications(state.notifications);
+    if (!prefs.enabled) return;
+    if (!hasBridge() || typeof bridge.testNotification !== 'function') {
+      setNotifStatus('Проверка доступна только в приложении.', true);
+      return;
+    }
+    setNotifStatus('Отправляем…', false);
+    Promise.resolve()
+      .then(function () {
+        return bridge.testNotification();
+      })
+      .then(function (result) {
+        if (result && result.ok) {
+          setNotifStatus('Уведомление отправлено.', false);
+          return;
+        }
+        if (result && result.supported === false) {
+          setNotifStatus('Windows не поддерживает уведомления.', true);
+          return;
+        }
+        setNotifStatus('Не удалось отправить уведомление.', true);
+      }, function () {
+        setNotifStatus('Не удалось отправить уведомление.', true);
+      });
+  }
+
   function renderAccent(raw) {
     const accent = normalizeHex(raw);
     el.accentSwatches.forEach(function (button) {
@@ -463,6 +558,7 @@
     if (typeof snapshot.openAtLogin === 'boolean') {
       state.openAtLogin = snapshot.openAtLogin;
     }
+    state.notifications = normalizeNotifications(snapshot.notifications);
 
     if (typeof snapshot.effectiveTheme === 'string' && snapshot.effectiveTheme) {
       document.documentElement.dataset.theme = snapshot.effectiveTheme;
@@ -490,6 +586,7 @@
     renderBlocks();
     setSwitch(el.alwaysOnTop, state.alwaysOnTop);
     setSwitch(el.openAtLogin, state.openAtLogin);
+    renderNotifications();
   }
 
   /** Build a full appearance object from the last snapshot (export fallback). */
@@ -1466,6 +1563,32 @@
         setSwitch(el.openAtLogin, next);
         applyPatch({ openAtLogin: next });
       }));
+    }
+
+    if (el.notifEnabled) {
+      el.notifEnabled.addEventListener('click', guard(function () {
+        const next = normalizeNotifications(state.notifications);
+        setNotificationFlag('enabled', next.enabled === false);
+      }));
+    }
+
+    [
+      ['context_red', el.notifContextRed],
+      ['zcode_voucher', el.notifZcodeVoucher],
+      ['quota_5h_reset', el.notifQuotaReset],
+    ].forEach(function (pair) {
+      const key = pair[0];
+      const button = pair[1];
+      if (!button) return;
+      button.addEventListener('click', guard(function () {
+        const next = normalizeNotifications(state.notifications);
+        if (next.enabled === false) return;
+        setNotificationFlag(key, next[key] === false);
+      }));
+    });
+
+    if (el.notifTest) {
+      el.notifTest.addEventListener('click', guard(handleTestNotification));
     }
 
     if (el.reset) {
