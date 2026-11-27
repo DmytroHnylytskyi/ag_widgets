@@ -250,9 +250,94 @@ def run_once(
         return {"status_written": False, "error": str(exc)}
 
     now_ts = now.timestamp()
-    paths.write_json(state_dir / "status.json", status)
+    try:
+        paths.write_json(state_dir / "status.json", status)
+    except OSError as exc:
+        # A read-only profile or a full disk must not escape as a traceback:
+        # the desktop shows the returned message instead of "no JSON output".
+        return {"status_written": False, "error": f"cannot write status.json: {exc}"}
 
+    publish_info = _publish_if_due(
+        state_dir=state_dir,
+        status=status,
+        now_ts=now_ts,
+        topic=topic,
+        server_url=server_url,
+        e2e_key=e2e_key,
+        ntfy_enabled=ntfy_enabled,
+        dry_run=dry_run,
+        force_publish=force_publish,
+    )
+
+    result: dict[str, Any] = {"status_written": True}
+    if show_topic:
+        result["topic"] = topic
+    else:
+        result["topic_configured"] = bool(topic)
+    result["publish"] = publish_info
+    return result
+
+
+def _publish_if_due(
+    *,
+    state_dir: Path,
+    status: dict[str, Any],
+    now_ts: float,
+    topic: str,
+    server_url: str,
+    e2e_key: str | None,
+    ntfy_enabled: bool,
+    dry_run: bool,
+    force_publish: bool,
+) -> dict[str, Any]:
+    """Publish the fresh snapshot while holding the channel-state lock.
+
+    The per-minute sidecar and an Electron-triggered refresh are separate
+    processes. Reading ``publish_state.json``, deciding and writing it back used
+    to happen without a lock, so both could publish the same snapshot (two
+    identical ntfy messages, two ``last_published_ts`` writes) and both could
+    run ``agy /usage`` at the same time. The whole read-decide-publish-write
+    sequence is one critical section now: the second process waits for the lock,
+    then sees the fresh state and throttles instead of duplicating.
+    """
     publish_state_path = state_dir / "publish_state.json"
+    try:
+        with paths.file_lock(paths.lock_path_for(publish_state_path)):
+            return _publish_locked(
+                publish_state_path=publish_state_path,
+                status=status,
+                now_ts=now_ts,
+                topic=topic,
+                server_url=server_url,
+                e2e_key=e2e_key,
+                ntfy_enabled=ntfy_enabled,
+                dry_run=dry_run,
+                force_publish=force_publish,
+            )
+    except TimeoutError:
+        # Another collector holds the lock and is publishing right now. Skipping
+        # this cycle is the correct outcome: the other run refreshes the state.
+        return {"published": False, "reason": "busy"}
+    except OSError as exc:
+        # A failed state write after a successful POST must not escape as a
+        # traceback: the desktop would report "no JSON output" and the user
+        # would see nothing at all.
+        return {"published": False, "reason": "state_write_failed", "detail": str(exc)}
+
+
+def _publish_locked(
+    *,
+    publish_state_path: Path,
+    status: dict[str, Any],
+    now_ts: float,
+    topic: str,
+    server_url: str,
+    e2e_key: str | None,
+    ntfy_enabled: bool,
+    dry_run: bool,
+    force_publish: bool,
+) -> dict[str, Any]:
+    """The throttling decision itself; callers must hold the state lock."""
     publish_state = paths.read_json(publish_state_path) or {}
     last_published_ts = _as_float(publish_state.get("last_published_ts"))
     last_payload = publish_state.get("last_payload")
@@ -316,14 +401,7 @@ def run_once(
                     "server": server_url,
                 },
             )
-
-    result: dict[str, Any] = {"status_written": True}
-    if show_topic:
-        result["topic"] = topic
-    else:
-        result["topic_configured"] = bool(topic)
-    result["publish"] = publish_info
-    return result
+    return publish_info
 
 
 def _write_text(text: str) -> None:

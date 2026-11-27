@@ -30,6 +30,7 @@ DOCS = (
     "docs/AGENT_INSTALL.md",
     "docs/CONTEXT_HEALTH.md",
     "docs/RELEASING.md",
+    "docs/BUGFIXES.md",
     "CHANGELOG.md",
 )
 

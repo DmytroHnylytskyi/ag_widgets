@@ -7,9 +7,10 @@ import json
 import os
 import sys
 import tempfile
+import threading
 import time
 import unittest
-from contextlib import ExitStack
+from contextlib import ExitStack, nullcontext
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest import mock
@@ -367,7 +368,9 @@ def _context_conversation(**overrides):
     return conversation
 
 
-class RunOnceTests(unittest.TestCase):
+class RunOnceFixture(unittest.TestCase):
+    """Shared temp state dir and mocks; contains no tests of its own."""
+
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
@@ -420,6 +423,8 @@ class RunOnceTests(unittest.TestCase):
 
     def _current_payload(self):
         return status.build_status(self.state, {}, datetime.now(timezone.utc))
+
+class RunOnceTests(RunOnceFixture):
 
     def test_default_output_hides_topic(self):
         result = status.run_once()
@@ -779,6 +784,90 @@ class MainTests(unittest.TestCase):
 
         self.assertEqual(raised.exception.code, 1)
         self.assertEqual(json.loads(stdout.getvalue()), payload)
+
+
+class PublishLockTests(RunOnceFixture):
+    """The publish decision must be one critical section across processes.
+
+    The per-minute sidecar, the ``Обновить`` button and the pairing helpers all
+    run ``run_once`` in separate processes. Before the fix each of them read
+    ``publish_state.json``, decided to publish and posted the same snapshot, so
+    the phone received two identical messages.
+    """
+
+    def test_concurrent_force_and_plain_run_publish_once(self):
+        self._write_context()
+        payload = self._current_payload()
+        stale = json.loads(json.dumps(payload))
+        # A payload that differs from the current one, so the plain run has a
+        # real reason to publish once the 10-minute throttle has elapsed.
+        stale["context_summary"]["tokens"] = 1
+        # has_meaningful_change() needs >= 2 percentage points on ``pct``.
+        stale["context_summary"]["pct"] = 50.0
+        self._write_publish_state(time.time() - 700, last_payload=stale)
+
+        calls = []
+
+        def slow_publish(*args, **kwargs):
+            calls.append(kwargs)
+            time.sleep(0.3)
+            return True, "HTTP 200"
+
+        self.publish.side_effect = slow_publish
+        results = {}
+
+        def run_force():
+            results["force"] = status.run_once(force_publish=True)
+
+        def run_plain():
+            results["plain"] = status.run_once()
+
+        force = threading.Thread(target=run_force)
+        plain = threading.Thread(target=run_plain)
+        force.start()
+        time.sleep(0.05)  # Let the forced run take the lock first.
+        plain.start()
+        force.join()
+        plain.join()
+
+        self.assertEqual(len(calls), 1, "the same snapshot must be published once")
+        self.assertTrue(results["force"]["publish"]["published"])
+        self.assertEqual(results["plain"]["publish"]["reason"], "throttled_or_unchanged")
+
+    def test_lock_timeout_reports_busy(self):
+        with mock.patch.object(status.paths, "file_lock", side_effect=TimeoutError("held")):
+            info = status._publish_if_due(
+                state_dir=self.state,
+                status=self._current_payload(),
+                now_ts=time.time(),
+                topic="agw-abc_123",
+                server_url="https://ntfy.sh",
+                e2e_key=None,
+                ntfy_enabled=True,
+                dry_run=False,
+                force_publish=True,
+            )
+
+        self.assertEqual(info["reason"], "busy")
+        self.publish.assert_not_called()
+
+    def test_state_write_failure_is_reported_not_raised(self):
+        with mock.patch.object(status.paths, "file_lock", return_value=nullcontext()):
+            with mock.patch.object(status.paths, "write_json", side_effect=OSError("disk full")):
+                info = status._publish_if_due(
+                    state_dir=self.state,
+                    status=self._current_payload(),
+                    now_ts=time.time(),
+                    topic="agw-abc_123",
+                    server_url="https://ntfy.sh",
+                    e2e_key=None,
+                    ntfy_enabled=True,
+                    dry_run=False,
+                    force_publish=True,
+                )
+
+        self.assertEqual(info["reason"], "state_write_failed")
+        self.assertIn("disk full", info["detail"])
 
 
 if __name__ == "__main__":
