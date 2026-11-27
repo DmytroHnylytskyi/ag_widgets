@@ -7,6 +7,7 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -17,6 +18,9 @@ import dev.agwidgets.data.StatusStore
 import dev.agwidgets.data.ZCodeStore
 import dev.agwidgets.notify.Notifier
 import dev.agwidgets.ui.AgWidgetsScreen
+import dev.agwidgets.ui.i18n.AppLanguage
+import dev.agwidgets.ui.i18n.LocalStrings
+import dev.agwidgets.ui.i18n.stringsFor
 import dev.agwidgets.ui.theme.AGWidgetsTheme
 import dev.agwidgets.ui.theme.normalizeThemeMode
 import dev.agwidgets.ui.theme.resolveAgTheme
@@ -46,6 +50,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             val appContext = applicationContext
             var themeMode by remember { mutableStateOf(StatusStore.getThemeMode(appContext)) }
+            var languageMode by remember { mutableStateOf(StatusStore.getLanguage(appContext)) }
+            val strings = stringsFor(AppLanguage.resolve(languageMode))
             val systemDark = isSystemInDarkTheme()
             val resolved = resolveAgTheme(themeMode, systemDark)
 
@@ -60,17 +66,30 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(themeMode, resolved.isDark) {
                 LimitsWidget().updateAll(appContext)
             }
+            // The widget and the notification channel carry their own copy, so a
+            // language switch has to repaint them while the app is open.
+            LaunchedEffect(languageMode) {
+                LimitsWidget().updateAll(appContext)
+                Notifier.ensureChannel(appContext)
+            }
 
-            AGWidgetsTheme(themeMode = themeMode, systemDark = systemDark) {
-                AgWidgetsScreen(
-                    themeMode = themeMode,
-                    onSelectTheme = { mode ->
-                        StatusStore.setThemeMode(appContext, mode)
-                        themeMode = normalizeThemeMode(mode)
-                    },
-                    pendingPairingUri = pendingPairingUri,
-                    onConsumePairingUri = { pendingPairingUri = null },
-                )
+            CompositionLocalProvider(LocalStrings provides strings) {
+                AGWidgetsTheme(themeMode = themeMode, systemDark = systemDark) {
+                    AgWidgetsScreen(
+                        themeMode = themeMode,
+                        onSelectTheme = { mode ->
+                            StatusStore.setThemeMode(appContext, mode)
+                            themeMode = normalizeThemeMode(mode)
+                        },
+                        language = languageMode,
+                        onSelectLanguage = { mode ->
+                            StatusStore.setLanguage(appContext, mode)
+                            languageMode = AppLanguage.normalize(mode)
+                        },
+                        pendingPairingUri = pendingPairingUri,
+                        onConsumePairingUri = { pendingPairingUri = null },
+                    )
+                }
             }
         }
     }

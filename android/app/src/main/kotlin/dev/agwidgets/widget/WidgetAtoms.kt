@@ -39,6 +39,7 @@ import dev.agwidgets.ui.formatCountdownShort
 import dev.agwidgets.ui.formatK
 import dev.agwidgets.ui.formatUnits
 import dev.agwidgets.ui.formatWindow
+import dev.agwidgets.ui.i18n.AgStrings
 import dev.agwidgets.ui.parseInstant
 import dev.agwidgets.ui.prettyModel
 import dev.agwidgets.ui.theme.AgColors
@@ -119,13 +120,13 @@ internal fun fit(text: String, maxChars: Int): String =
  * accessibility label is unchanged.
  */
 @Composable
-fun HeaderRefreshButton(colors: AgColors) {
+fun HeaderRefreshButton(colors: AgColors, strings: AgStrings) {
     Box(
         modifier = GlanceModifier
             .clickable(actionRunCallback<RefreshActionCallback>())
             .width(40.dp)
             .height(32.dp)
-            .semantics { contentDescription = "Обновить данные" },
+            .semantics { contentDescription = strings.commonRefreshData },
         contentAlignment = Alignment.Center,
     ) {
         Box(
@@ -152,12 +153,12 @@ fun HeaderRefreshButton(colors: AgColors) {
  * context line made the block taller than the cell.
  */
 @Composable
-fun InlineRefreshButton(colors: AgColors, fontScale: Float) {
+fun InlineRefreshButton(colors: AgColors, fontScale: Float, strings: AgStrings) {
     Box(
         modifier = GlanceModifier
             .clickable(actionRunCallback<RefreshActionCallback>())
             .size(40.dp)
-            .semantics { contentDescription = "Обновить данные" },
+            .semantics { contentDescription = strings.commonRefreshData },
         contentAlignment = Alignment.Center,
     ) {
         Box(
@@ -185,17 +186,18 @@ fun HeaderFreshnessAtom(
     colors: AgColors,
     compact: Boolean,
     stale: Boolean,
+    strings: AgStrings,
 ) {
     val fg = ColorProvider(colors.text)
     val subtle = ColorProvider(colors.muted)
     val accent = ColorProvider(colors.glow)
     // The author's `AGW / 01` code stays exclusively in Classic.
-    val brand = if (colors.isClassic) "AGW / 01" else "AG Widgets"
+    val brand = if (colors.isClassic) strings.brandAgw01 else strings.brandWidgets
     val time = formatTimeShort(status?.pcUpdatedAt ?: status?.updatedAt) ?: "—"
     val headline = buildString {
-        append("Antigravity")
+        append(strings.brandAntigravity)
         status?.planTier?.let { append(" · ").append(it) }
-        if (stale) append(" · устарело")
+        if (stale) append(strings.watomsStaleSuffix)
     }
 
     Row(
@@ -230,7 +232,7 @@ fun HeaderFreshnessAtom(
             maxLines = 1,
             modifier = GlanceModifier.defaultWeight(),
         )
-        HeaderRefreshButton(colors = colors)
+        HeaderRefreshButton(colors = colors, strings = strings)
         Spacer(GlanceModifier.width(4.dp))
         Text(
             text = time,
@@ -252,6 +254,7 @@ fun ContextBarAtom(
     colors: AgColors,
     showInlineRefresh: Boolean,
     barWidthDp: Float,
+    strings: AgStrings,
 ) {
     val subtle = ColorProvider(colors.muted)
     val tokens = ctx?.tokens
@@ -261,7 +264,7 @@ fun ContextBarAtom(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "Контекст недоступен",
+                text = strings.watomsContextUnavailable,
                 style = TextStyle(
                     color = ColorProvider(colors.secondary),
                     fontSize = scaledSp(11f, config.fontScale, colors).sp,
@@ -269,7 +272,9 @@ fun ContextBarAtom(
                 maxLines = 1,
                 modifier = GlanceModifier.defaultWeight(),
             )
-            if (showInlineRefresh) InlineRefreshButton(colors = colors, fontScale = config.fontScale)
+            if (showInlineRefresh) {
+                InlineRefreshButton(colors = colors, fontScale = config.fontScale, strings = strings)
+            }
         }
         return
     }
@@ -294,7 +299,7 @@ fun ContextBarAtom(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "Контекст",
+                text = strings.labelContext,
                 style = TextStyle(
                     color = subtle,
                     fontSize = scaledSp(11f, config.fontScale, colors).sp,
@@ -333,7 +338,9 @@ fun ContextBarAtom(
                 Spacer(GlanceModifier.width(4.dp))
                 CompactChip(colors, config.fontScale)
             }
-            if (showInlineRefresh) InlineRefreshButton(colors = colors, fontScale = config.fontScale)
+            if (showInlineRefresh) {
+                InlineRefreshButton(colors = colors, fontScale = config.fontScale, strings = strings)
+            }
         }
         Spacer(GlanceModifier.height(4.dp))
         Bar(
@@ -354,6 +361,7 @@ fun QuotasAtom(
     colors: AgColors,
     isCompactHeight: Boolean,
     contentWidthDp: Float,
+    strings: AgStrings,
 ) {
     val showGemini = config.option(WidgetBlockId.QUOTAS, "show_gemini", true)
     val show3p = config.option(WidgetBlockId.QUOTAS, "show_3p", true)
@@ -380,10 +388,10 @@ fun QuotasAtom(
     val cellWidth = ((contentWidthDp - cellGap.value * (cellCount - 1)) / cellCount)
         .coerceAtLeast(8f)
     // Classic keeps the author's campaign vocabulary (`GEMINI 5H` / `WK`).
-    val geminiFiveHourLabel = if (colors.isClassic) "GEMINI 5H" else "Gemini 5 ч"
-    val geminiWeeklyLabel = if (colors.isClassic) "GEMINI WK" else "Gemini 7 дн"
-    val thirdFiveHourLabel = if (colors.isClassic) "CLAUDE/GPT 5H" else "Claude / GPT 5 ч"
-    val thirdWeeklyLabel = if (colors.isClassic) "CLAUDE/GPT WK" else "Claude / GPT 7 дн"
+    val geminiFiveHourLabel = if (colors.isClassic) strings.watomsClassicGemini5h else strings.watomsGemini5h
+    val geminiWeeklyLabel = if (colors.isClassic) strings.watomsClassicGeminiWeekly else strings.watomsGeminiWeekly
+    val thirdFiveHourLabel = if (colors.isClassic) strings.watomsClassicThird5h else strings.watomsThird5h
+    val thirdWeeklyLabel = if (colors.isClassic) strings.watomsClassicThirdWeekly else strings.watomsThirdWeekly
 
     if (grid) {
         Column(modifier = GlanceModifier.fillMaxWidth()) {
@@ -398,6 +406,7 @@ fun QuotasAtom(
                     now = now,
                     barWidthDp = cellWidth,
                     modifier = GlanceModifier.defaultWeight(),
+                    strings = strings,
                 )
                 Spacer(GlanceModifier.width(cellGap))
                 QuotaCell(
@@ -410,6 +419,7 @@ fun QuotasAtom(
                     now = now,
                     barWidthDp = cellWidth,
                     modifier = GlanceModifier.defaultWeight(),
+                    strings = strings,
                 )
             }
             Spacer(GlanceModifier.height(gap.dp))
@@ -424,6 +434,7 @@ fun QuotasAtom(
                     now = now,
                     barWidthDp = cellWidth,
                     modifier = GlanceModifier.defaultWeight(),
+                    strings = strings,
                 )
                 Spacer(GlanceModifier.width(cellGap))
                 QuotaCell(
@@ -436,6 +447,7 @@ fun QuotasAtom(
                     now = now,
                     barWidthDp = cellWidth,
                     modifier = GlanceModifier.defaultWeight(),
+                    strings = strings,
                 )
             }
         }
@@ -453,6 +465,7 @@ fun QuotasAtom(
                     now = now,
                     barWidthDp = cellWidth,
                     modifier = GlanceModifier.defaultWeight(),
+                    strings = strings,
                 )
                 Spacer(GlanceModifier.width(cellGap))
                 QuotaCell(
@@ -465,6 +478,7 @@ fun QuotasAtom(
                     now = now,
                     barWidthDp = cellWidth,
                     modifier = GlanceModifier.defaultWeight(),
+                    strings = strings,
                 )
             }
             if (showGemini && show3p) Spacer(GlanceModifier.width(gap.dp))
@@ -479,6 +493,7 @@ fun QuotasAtom(
                     now = now,
                     barWidthDp = cellWidth,
                     modifier = GlanceModifier.defaultWeight(),
+                    strings = strings,
                 )
                 Spacer(GlanceModifier.width(cellGap))
                 QuotaCell(
@@ -491,6 +506,7 @@ fun QuotasAtom(
                     now = now,
                     barWidthDp = cellWidth,
                     modifier = GlanceModifier.defaultWeight(),
+                    strings = strings,
                 )
             }
         }
@@ -505,9 +521,10 @@ fun ZCodeAtom(
     colors: AgColors,
     showInlineRefresh: Boolean,
     contentWidthDp: Float,
+    strings: AgStrings,
     trailingContext: ContextSummary? = null,
 ) {
-    val (text, accent) = zcodeStatus(zcode, colors)
+    val (text, accent) = zcodeStatus(zcode, colors, strings)
 
     Column(modifier = GlanceModifier.fillMaxWidth()) {
         Row(
@@ -528,11 +545,12 @@ fun ZCodeAtom(
                     ctx = trailingContext,
                     colors = colors,
                     fontScale = config.fontScale,
+                    strings = strings,
                 )
             }
             if (showInlineRefresh) {
                 Spacer(GlanceModifier.defaultWeight())
-                InlineRefreshButton(colors = colors, fontScale = config.fontScale)
+                InlineRefreshButton(colors = colors, fontScale = config.fontScale, strings = strings)
             }
         }
         val remaining = zcode?.remainingUnits
@@ -674,6 +692,7 @@ private fun ContextTrailingReadout(
     ctx: ContextSummary,
     colors: AgColors,
     fontScale: Float,
+    strings: AgStrings,
 ) {
     val tokens = ctx.tokens ?: return
     val levelColor = when (ctx.level) {
@@ -683,7 +702,7 @@ private fun ContextTrailingReadout(
         "unknown" -> colors.muted
         else -> colors.glow
     }
-    val prefix = if (ctx.active) "ЧАТ" else "ПК"
+    val prefix = if (ctx.active) strings.watomsClassicChat else strings.watomsClassicPc
     val pct = ctx.pct?.takeIf { it.isFinite() }?.let { " ${it.roundToInt()}%" }.orEmpty()
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
@@ -716,6 +735,7 @@ private fun QuotaCell(
     now: Long,
     barWidthDp: Float,
     modifier: GlanceModifier = GlanceModifier,
+    strings: AgStrings,
 ) {
     val frac = bucket?.remainingFraction?.toFloat()
         ?.takeIf { it.isFinite() }
@@ -764,7 +784,7 @@ private fun QuotaCell(
         Bar(frac ?: 0f, valueColor, colors.track, 3, barWidthDp)
         // A missing reset time hides the line instead of printing a lone dash.
         val reset = if (showCountdown) {
-            formatCountdownShort(bucket?.resetTime, now)?.takeIf { it != "—" }
+            formatCountdownShort(bucket?.resetTime, now, strings)?.takeIf { it != "—" }
         } else {
             null
         }
@@ -788,22 +808,26 @@ private fun QuotaCell(
  * check failed. Technical detail (HTTP codes, parser messages) never reaches the
  * home screen; the balance case adds the plan and the remaining units.
  */
-private fun zcodeStatus(z: ZCodeStatus?, colors: AgColors): Pair<String, Color> {
-    if (z == null) return "ZCode: нет данных" to colors.muted
+private fun zcodeStatus(z: ZCodeStatus?, colors: AgColors, strings: AgStrings): Pair<String, Color> {
+    if (z == null) return strings.statusZcodeNoData to colors.muted
     val remaining = z.remainingUnits
     val total = z.totalUnits
     return when {
         z.isCouponUnknown -> when (z.errorKind) {
-            "auth_expired" -> "ZCode: нужен вход" to colors.amber
-            "network" -> "ZCode: нет связи" to colors.rose
-            else -> "ZCode: ошибка проверки" to colors.rose
+            "auth_expired" -> strings.statusZcodeSignIn to colors.amber
+            "network" -> strings.statusZcodeNoConnection to colors.rose
+            else -> strings.statusZcodeCheckFailed to colors.rose
         }
-        z.networkError -> "ZCode: нет связи" to colors.rose
-        z.method == "disabled" -> "ZCode: не подключён" to colors.muted
-        z.isCouponVisible -> "ZCode: ваучер доступен" to colors.glow
+        z.networkError -> strings.statusZcodeNoConnection to colors.rose
+        z.method == "disabled" -> strings.statusZcodeNotConnected to colors.muted
+        z.isCouponVisible -> strings.statusZcodeCouponAvailable to colors.glow
         remaining != null && (remaining > 0 || (total != null && total > 0)) ->
-            "${z.planName.ifBlank { "ZCode" }} ${formatUnits(remaining)}" to colors.glow
-        else -> "ZCode: нет ваучера" to colors.muted
+            strings.fill(
+                strings.statusZcodeBalance,
+                "plan" to z.planName.ifBlank { "ZCode" },
+                "amount" to formatUnits(remaining),
+            ) to colors.glow
+        else -> strings.statusZcodeNoCoupon to colors.muted
     }
 }
 

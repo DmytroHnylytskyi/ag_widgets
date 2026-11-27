@@ -35,6 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.agwidgets.ui.i18n.LocalStrings
 import dev.agwidgets.ui.theme.AgDim
 import dev.agwidgets.ui.theme.AgTheme
 import dev.agwidgets.ui.theme.AgType
@@ -326,9 +327,10 @@ internal fun AgGhostButton(
 
 @Composable
 internal fun RefreshButton(isRefreshing: Boolean, onClick: () -> Unit) {
+    val s = LocalStrings.current
     AgIconButton(
         icon = UiIcons.Refresh,
-        contentDescription = if (isRefreshing) "Обновление идёт" else "Обновить данные",
+        contentDescription = if (isRefreshing) s.commonRefreshing else s.commonRefreshData,
         onClick = onClick,
         enabled = !isRefreshing,
     )
@@ -339,7 +341,7 @@ internal fun RefreshButton(isRefreshing: Boolean, onClick: () -> Unit) {
 internal fun SettingsButton(onClick: () -> Unit) {
     AgIconButton(
         icon = UiIcons.Settings,
-        contentDescription = "Настройки",
+        contentDescription = LocalStrings.current.setTitle,
         onClick = onClick,
     )
 }

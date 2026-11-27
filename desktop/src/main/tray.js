@@ -6,17 +6,19 @@ const { APP_DIR, STATUS_PATH } = require('./paths');
 const { readAllState, readJson } = require('./storage');
 const zcodeAuth = require('./zcode-auth');
 const appearance = require('./appearance');
+const preferences = require('./preferences');
+const i18n = require('../shared/i18n.js');
 
 const APP_ROOT = path.join(__dirname, '..', '..');
 const ASSETS_DIR = path.join(APP_ROOT, 'assets');
 const ZCODE_WEB_URL = 'https://zcode.z.ai/';
 
-/** Tray labels for the four window form factors. */
-const WINDOW_MODE_LABELS = Object.freeze({
-  full: 'Полный',
-  compact: 'Компактный',
-  minibar: 'Мини-бар',
-  pill: 'Пилюля',
+/** Dictionary keys for the four window form factors. */
+const WINDOW_MODE_KEYS = Object.freeze({
+  full: 'tray.modeFull',
+  compact: 'tray.modeCompact',
+  minibar: 'tray.modeMinibar',
+  pill: 'tray.modePill',
 });
 
 let tray = null;
@@ -205,12 +207,12 @@ function pickHandler(candidate, fallback) {
 }
 
 /** Radio submenu switching the widget between window form factors. */
-function windowModeSubmenu(presetMode, handlers) {
+function windowModeSubmenu(presetMode, handlers, lang = 'ru') {
   const active = appearance.normalizePresetMode(presetMode);
   return {
-    label: 'Режим окна',
+    label: i18n.t('tray.windowMode', null, lang),
     submenu: appearance.PRESET_MODES.map((id) => ({
-      label: WINDOW_MODE_LABELS[id],
+      label: i18n.t(WINDOW_MODE_KEYS[id], null, lang),
       type: 'radio',
       checked: active === id,
       click: () => pickHandler(handlers.setWindowMode, applyWindowMode)(id),
@@ -254,6 +256,7 @@ function buildMenuTemplate({
   notificationsEnabled = true,
   zcodeConnected = false,
   presetMode = 'full',
+  lang = 'ru',
   handlers = {},
 } = {}) {
   const isWindowMenu = source === 'window';
@@ -266,20 +269,20 @@ function buildMenuTemplate({
   // is meaningless there; the tray only offers the action that applies.
   if (!isWindowMenu && windowVisible !== true) {
     template.push({
-      label: 'Показать виджет',
+      label: i18n.t('tray.show', null, lang),
       click: pickHandler(handlers.showWindow || handlers.toggleWindow, showWidget),
     });
   }
   if (isWindowMenu || windowVisible === true) {
     template.push({
-      label: 'Свернуть в трей',
+      label: i18n.t('tray.hide', null, lang),
       click: pickHandler(handlers.hideWindow || handlers.toggleWindow, hideWidget),
     });
   }
 
   template.push(
     {
-      label: 'Поверх всех окон',
+      label: i18n.t('tray.alwaysOnTop', null, lang),
       type: 'checkbox',
       checked: alwaysOnTopChecked,
       click: (item) => {
@@ -290,7 +293,7 @@ function buildMenuTemplate({
       },
     },
     {
-      label: 'Запускать при входе',
+      label: i18n.t('tray.openAtLogin', null, lang),
       type: 'checkbox',
       checked: openAtLoginChecked,
       click: (item) => {
@@ -301,7 +304,7 @@ function buildMenuTemplate({
       },
     },
     {
-      label: 'Уведомления',
+      label: i18n.t('tray.notifications', null, lang),
       type: 'checkbox',
       checked: notificationsChecked,
       click: (item) => {
@@ -311,27 +314,42 @@ function buildMenuTemplate({
         return handler(checked);
       },
     },
-    { label: 'Настройки…', click: pickHandler(handlers.openSettings, openSettings) },
+    {
+      label: i18n.t('tray.settings', null, lang),
+      click: pickHandler(handlers.openSettings, openSettings),
+    },
     { type: 'separator' },
   );
 
   // The window-mode submenu goes strictly after this separator: the existing
   // test pins "Настройки…" immediately before it.
-  template.push(windowModeSubmenu(presetMode, handlers));
+  template.push(windowModeSubmenu(presetMode, handlers, lang));
 
   template.push(
-    { label: 'Открыть папку конфига', click: pickHandler(handlers.openConfigDir, openConfigDir) },
-    { label: 'Открыть Z.ai', click: pickHandler(handlers.openZCodeWeb, openZCodeWeb) },
+    {
+      label: i18n.t('tray.openConfigDir', null, lang),
+      click: pickHandler(handlers.openConfigDir, openConfigDir),
+    },
+    {
+      label: i18n.t('tray.openZcode', null, lang),
+      click: pickHandler(handlers.openZCodeWeb, openZCodeWeb),
+    },
   );
 
   if (zcodeConnected === true) {
     template.push({
-      label: 'Выйти из Z.ai',
+      label: i18n.t('tray.logout', null, lang),
       click: pickHandler(handlers.logout, logoutZCode),
     });
   }
 
-  template.push({ type: 'separator' }, { label: 'Выход', click: pickHandler(handlers.quit, quit) });
+  template.push(
+    { type: 'separator' },
+    {
+      label: i18n.t('tray.quit', null, lang),
+      click: pickHandler(handlers.quit, quit),
+    },
+  );
   return template;
 }
 
@@ -370,6 +388,7 @@ function buildMenu(options = {}) {
     notificationsEnabled: currentNotificationsEnabled(),
     zcodeConnected: isZCodeConnected(),
     presetMode: currentPresetMode(),
+    lang: preferences.resolveCurrentLanguage(),
     handlers: options.handlers || {},
   });
 
@@ -388,7 +407,7 @@ function createTray() {
     ? electron.nativeImage.createFromPath(iconPath)
     : electron.nativeImage.createEmpty();
   tray = new electron.Tray(icon);
-  tray.setToolTip('AG Widgets');
+  tray.setToolTip(i18n.t('tray.tooltip', null, preferences.resolveCurrentLanguage()));
 
   refreshMenu();
   tray.on('click', () => {

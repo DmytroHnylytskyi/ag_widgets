@@ -7,16 +7,31 @@
 (function (root) {
   const AGW = (root.AGW = root.AGW || {});
   const format = AGW.format || (typeof require === 'function' ? require('./format.js') : null);
+  const i18n = AGW.i18n || (typeof require === 'function' ? require('../shared/i18n.js') : null);
   const { clamp, formatCountdown } = format;
+
+  /** Dictionary lookup with the RU default so Node tests stay byte-identical. */
+  function tr(key, vars, lang) {
+    return i18n && typeof i18n.t === 'function' ? i18n.t(key, vars, lang) : key;
+  }
 
   const BUCKET_PRIORITY = ['gemini-5h', 'gemini-weekly', '3p-5h', '3p-weekly'];
   const MAX_ROWS = 4;
 
-  function bucketLabel(bucket) {
+  function bucketLabel(bucket, lang = 'ru') {
     const id = String(bucket.id || '').toLowerCase();
-    const group = id.startsWith('gemini-') ? 'Gemini' : id.startsWith('3p-') ? 'Claude / GPT' : '';
-    const kind = bucket.kind === '5h' ? '5 ч' : bucket.kind === 'weekly' ? '7 дн' : bucket.id || 'квота';
-    return group ? `${group} · ${kind}` : kind;
+    const group = id.startsWith('gemini-')
+      ? tr('dashboard.quotas.groupGemini', null, lang)
+      : id.startsWith('3p-')
+        ? tr('dashboard.quotas.groupThirdParty', null, lang)
+        : '';
+    const kind =
+      bucket.kind === '5h'
+        ? tr('dashboard.quotas.kind5h', null, lang)
+        : bucket.kind === 'weekly'
+          ? tr('dashboard.quotas.kindWeekly', null, lang)
+          : bucket.id || tr('dashboard.quotas.kindFallback', null, lang);
+    return group ? tr('dashboard.quotas.bucketGrouped', { group, kind }, lang) : kind;
   }
 
   function bucketPriority(bucket) {
@@ -29,7 +44,7 @@
    * Pure per-bucket view model for the quota row.
    * An unknown fraction yields `null` percent and a neutral, zero-width fill.
    */
-  function bucketView(bucket) {
+  function bucketView(bucket, lang = 'ru') {
     const safe = bucket || {};
     const id = String(safe.id || '');
     const isThirdParty = id.startsWith('3p-');
@@ -47,9 +62,9 @@
 
     return {
       percent,
-      percentText: percent === null ? '—' : `${percent}%`,
+      percentText: percent === null ? '—' : tr('dashboard.quotas.percent', { pct: percent }, lang),
       fillClass,
-      label: bucketLabel(safe),
+      label: bucketLabel(safe, lang),
     };
   }
 
@@ -57,7 +72,7 @@
    * Pure view model for the plan-tier badge: hidden while the tier is unknown
    * instead of painting an empty "—" badge, with the error kept in the tooltip.
    */
-  function planTierView(antigravity) {
+  function planTierView(antigravity, lang = 'ru') {
     const planTier =
       antigravity && typeof antigravity.plan_tier === 'string' ? antigravity.plan_tier.trim() : '';
     const error =
@@ -66,7 +81,7 @@
       visible: Boolean(planTier),
       text: planTier,
       hasError: Boolean(error),
-      title: error ? `Квоты не обновились: ${error}` : '',
+      title: error ? tr('dashboard.quotas.errorTooltip', { error }, lang) : '',
     };
   }
 
@@ -75,7 +90,7 @@
    * reason stays in the tooltip instead of pushing the card past the fold
    * (S1-046).
    */
-  function renderError(errorBox, error) {
+  function renderError(errorBox, error, lang = 'ru') {
     if (!errorBox) return;
     errorBox.textContent = '';
     if (!error) {
@@ -85,11 +100,11 @@
     }
 
     const message = document.createElement('span');
-    message.textContent = 'Не удалось обновить лимиты';
+    message.textContent = tr('dashboard.quotas.error', null, lang);
     const retry = document.createElement('button');
     retry.type = 'button';
     retry.className = 'quota-retry';
-    retry.textContent = 'Повторить';
+    retry.textContent = tr('dashboard.quotas.retry', null, lang);
     retry.addEventListener('click', () => {
       document.dispatchEvent(new CustomEvent('agw:refresh'));
     });
@@ -100,6 +115,7 @@
 
   function render(status, options = {}) {
     const opts = options && typeof options === 'object' && !Array.isArray(options) ? options : {};
+    const lang = opts.lang === 'en' ? 'en' : 'ru';
     const showGemini = opts.show_gemini !== false;
     const showThirdParty = opts.show_3p !== false;
     const showCountdown = opts.show_countdown !== false;
@@ -109,7 +125,7 @@
     const errorBox = document.getElementById('quota-error');
     const antigravity = status && status.antigravity;
     const error = antigravity && typeof antigravity.error === 'string' ? antigravity.error : '';
-    const tierView = planTierView(antigravity);
+    const tierView = planTierView(antigravity, lang);
 
     if (tier) {
       tier.classList.toggle('hidden', !tierView.visible);
@@ -117,7 +133,7 @@
       if (tierView.title) tier.title = tierView.title;
       else tier.removeAttribute('title');
     }
-    renderError(errorBox, error);
+    renderError(errorBox, error, lang);
 
     if (!list) return;
 
@@ -139,7 +155,7 @@
       list.innerHTML = '';
       const message = document.createElement('div');
       message.className = 'empty-msg';
-      message.textContent = 'Квоты появятся после первого /usage';
+      message.textContent = tr('dashboard.quotas.empty', null, lang);
       list.appendChild(message);
       return;
     }
@@ -158,7 +174,11 @@
     if (extra) {
       if (hidden.length > 0) {
         extra.textContent = `+${hidden.length}`;
-        extra.title = `Скрыты: ${hidden.map((bucket) => bucketLabel(bucket)).join(', ')}`;
+        extra.title = tr(
+          'dashboard.quotas.hiddenTitle',
+          { labels: hidden.map((bucket) => bucketLabel(bucket, lang)).join(', ') },
+          lang,
+        );
         extra.classList.remove('hidden');
       } else {
         extra.textContent = '';
@@ -171,7 +191,7 @@
     list.innerHTML = '';
 
     sorted.slice(0, MAX_ROWS).forEach((bucket, index) => {
-      const view = bucketView(bucket);
+      const view = bucketView(bucket, lang);
       const id = String(bucket.id || '');
       const isThirdParty = id.startsWith('3p-');
       const isGemini = id.startsWith('gemini-');
@@ -195,7 +215,7 @@
       const percentEl = document.createElement('b');
       percentEl.textContent = view.percentText;
       reset.appendChild(percentEl);
-      const countdown = showCountdown ? formatCountdown(bucket.reset_time) : '';
+      const countdown = showCountdown ? formatCountdown(bucket.reset_time, null, lang) : '';
       if (countdown) reset.append(` · ${countdown}`);
 
       const indexEl = document.createElement('span');

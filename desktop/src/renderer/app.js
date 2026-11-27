@@ -7,7 +7,9 @@
 (function (AGW) {
   const params = new URLSearchParams(location.search);
   const previewName = params.get('preview');
-  const REFRESH_TITLE = 'Обновить данные (F5)';
+  const i18n = AGW.i18n;
+  /** Resolved UI language; Russian until the first settings snapshot. */
+  let currentLang = 'ru';
   const DARK_THEMES = new Set(['graphite', 'oled', 'glass-dark', 'classic-dark']);
   const DENSITIES = ['compact', 'comfortable', 'spacious'];
   const PRESET_MODES = ['full', 'compact', 'minibar', 'pill'];
@@ -31,6 +33,33 @@
   let appearanceSnapshot = null;
   let appearanceOptions = null;
   let stateLoaded = false;
+
+  function t(key, vars) {
+    return i18n ? i18n.t(key, vars, currentLang) : key;
+  }
+
+  function refreshTitle() {
+    return t('titlebar.refreshTooltip');
+  }
+
+  /**
+   * Resolve and apply the interface language from a settings snapshot without
+   * reloading the window. `language` is the mode, `resolvedLanguage` the
+   * concrete locale; both may be missing in older snapshots.
+   */
+  function setLanguage(snapshot) {
+    if (!i18n) return;
+    const mode = snapshot && snapshot.language;
+    const resolved = snapshot && snapshot.resolvedLanguage;
+    currentLang =
+      resolved === 'ru' || resolved === 'en'
+        ? resolved
+        : i18n.resolveLanguage(mode || 'auto', navigator.language);
+    i18n.applyDomTranslations(document, currentLang);
+    renderHeader(latestState);
+    if (stateLoaded) renderViews(latestState);
+    else refreshButton.title = refreshTitle();
+  }
 
   function isDarkEffectiveTheme(theme) {
     return DARK_THEMES.has(theme);
@@ -151,7 +180,8 @@
 
   /** Options for one block, with defaults available before the first snapshot. */
   function blockOptionsFor(id) {
-    return (appearanceOptions && appearanceOptions[id]) || BLOCK_DEFAULT_OPTIONS[id];
+    const base = (appearanceOptions && appearanceOptions[id]) || BLOCK_DEFAULT_OPTIONS[id];
+    return Object.assign({}, base, { lang: currentLang });
   }
 
   /**
@@ -162,6 +192,7 @@
    */
   function applyAppearanceSnapshot(snapshot) {
     if (!snapshot || typeof snapshot !== 'object') return;
+    setLanguage(snapshot);
     const appearance = snapshot.appearance || {};
     const theme =
       typeof snapshot.effectiveTheme === 'string' && snapshot.effectiveTheme
@@ -365,7 +396,7 @@
 
     if (!timestamp) {
       timeEl.textContent = '—';
-      timeEl.title = 'Нет данных о последнем ответе';
+      timeEl.title = t('titlebar.noDataTooltip');
       dot.className = 'live-dot off';
       return;
     }
@@ -373,18 +404,20 @@
     const date = new Date(timestamp);
     if (Number.isNaN(date.getTime())) {
       timeEl.textContent = '—';
-      timeEl.title = 'Нет данных о последнем ответе';
+      timeEl.title = t('titlebar.noDataTooltip');
       dot.className = 'live-dot off';
       return;
     }
 
     const now = new Date();
-    timeEl.textContent = AGW.format.shortAge(timestamp) || '—';
-    timeEl.title =
-      `Обновлено: ${date.toLocaleString('ru-RU')} · сейчас ${now.toLocaleTimeString('ru-RU', {
+    timeEl.textContent = AGW.format.shortAge(timestamp, null, currentLang) || '—';
+    timeEl.title = t('titlebar.updatedTooltip', {
+      when: date.toLocaleString(currentLang === 'en' ? 'en-GB' : 'ru-RU'),
+      now: now.toLocaleTimeString(currentLang === 'en' ? 'en-GB' : 'ru-RU', {
         hour: '2-digit',
         minute: '2-digit',
-      })}`;
+      }),
+    });
     const ageMinutes = (now.getTime() - date.getTime()) / 60000;
     dot.className = ageMinutes > 120 ? 'live-dot off' : ageMinutes > 15 ? 'live-dot stale' : 'live-dot';
   }
@@ -438,7 +471,8 @@
         fiveHour && typeof fiveHour.remaining_fraction === 'number' && Number.isFinite(fiveHour.remaining_fraction)
           ? AGW.format.clamp(fiveHour.remaining_fraction, 0, 1)
           : null;
-      quotaEl.textContent = fraction === null ? '—' : `5 ч ${Math.round(fraction * 100)}%`;
+      quotaEl.textContent =
+        fraction === null ? '—' : t('dashboard.strip.quota5h', { pct: Math.round(fraction * 100) });
     }
 
     if (zcodeEl) {
@@ -512,7 +546,7 @@
     clearRefreshTimer();
     refreshButton.classList.remove('error');
     refreshButton.classList.add('refreshing');
-    refreshButton.title = 'Обновляю данные…';
+    refreshButton.title = t('titlebar.refreshing');
     let failed = false;
     try {
       if (bridge && typeof bridge.refresh === 'function') {
@@ -524,16 +558,16 @@
     } catch (error) {
       failed = true;
       refreshButton.classList.add('error');
-      refreshButton.title = `Не удалось обновить: ${error.message}`;
+      refreshButton.title = t('titlebar.refreshFailed', { message: error.message });
       refreshTimer = setTimeout(() => {
         refreshTimer = null;
         refreshButton.classList.remove('error');
-        refreshButton.title = REFRESH_TITLE;
+        refreshButton.title = refreshTitle();
       }, 3000);
     } finally {
       refreshing = false;
       refreshButton.classList.remove('refreshing');
-      if (!failed) refreshButton.title = REFRESH_TITLE;
+      if (!failed) refreshButton.title = refreshTitle();
     }
   }
 
@@ -606,14 +640,20 @@
     AGW.zcode.render(latestState.status, blockOptionsFor('zcode_card'));
 
     try {
-      if (!bridge || typeof bridge.zcodeLogin !== 'function') throw new Error('Вход недоступен');
+      if (!bridge || typeof bridge.zcodeLogin !== 'function') {
+        throw new Error(t('dashboard.zcode.loginUnavailable'));
+      }
       const result = await bridge.zcodeLogin();
       if (attempt !== loginAttempt) return;
-      if (!result || !result.ok) throw new Error((result && result.error) || 'вход не выполнен');
+      if (!result || !result.ok) {
+        throw new Error((result && result.error) || t('dashboard.zcode.loginFailed'));
+      }
 
       AGW.zcode.setLogin(
         'success',
-        result.refreshed ? 'Вход выполнен · обновляю баланс…' : 'Токен сохранён · нажмите «Обновить»',
+        result.refreshed
+          ? t('dashboard.zcode.loginSuccessRefreshing')
+          : t('dashboard.zcode.tokenSaved'),
       );
       AGW.zcode.render(latestState.status, blockOptionsFor('zcode_card'));
 

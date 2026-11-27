@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">AG Widgets</string>
-    <string name="widget_description">Квоты Antigravity, контекст и ваучеры ZCode</string>
+    <string name="widget_description">Antigravity quotas, context, and ZCode vouchers</string>
+    <string name="widget_config_title">Widget settings</string>
 </resources>

@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.agwidgets.BuildConfig
+import dev.agwidgets.ui.i18n.LocalStrings
 import dev.agwidgets.ui.theme.AgDim
 import dev.agwidgets.ui.theme.AgTheme
 import dev.agwidgets.ui.theme.AgType
@@ -34,15 +35,16 @@ internal fun SurfaceCard(
     onConfigureWidget: (Int) -> Unit = {},
 ) {
     val colors = AgTheme.colors
+    val s = LocalStrings.current
     GlassCard {
         SectionHeader(
-            serial = "04 / SURFACE",
+            serial = s.serialSurface,
             title = if (installedWidgets.isEmpty()) {
-                "Виджет"
+                s.labelWidget
             } else {
-                "Виджет · ${installedWidgets.size}"
+                s.fill(s.dashSurfaceTitleCount, "count" to installedWidgets.size)
             },
-            chipText = if (installedWidgets.isEmpty()) "Не добавлен" else "На экране",
+            chipText = if (installedWidgets.isEmpty()) s.dashSurfaceNotAdded else s.dashSurfaceOnScreen,
             chipColor = if (installedWidgets.isEmpty()) colors.muted else colors.violet,
         )
         if (installedWidgets.isEmpty()) {
@@ -50,11 +52,9 @@ internal fun SurfaceCard(
                 // The `context` flavour has no ZCode data path, so its copy must
                 // not promise a ZCode status the widget can never show.
                 text = if (BuildConfig.ZCODE_ENABLED) {
-                    "Шкалы 5 ч и недели, обратный отсчёт, статус ZCode и контекст ПК. " +
-                        "Уведомления о сбросе приходят без компьютера."
+                    s.dashSurfaceDescriptionFull
                 } else {
-                    "Шкалы 5 ч и недели, обратный отсчёт и контекст ПК. " +
-                        "Уведомления о сбросе приходят без компьютера."
+                    s.dashSurfaceDescriptionContext
                 },
                 style = AgType.body,
                 color = colors.secondary,
@@ -91,7 +91,7 @@ internal fun SurfaceCard(
                         modifier = Modifier.height(AgDim.MinTouch),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.text),
                     ) {
-                        Text(text = "Настроить", style = AgType.body)
+                        Text(text = s.commonConfigure, style = AgType.body)
                     }
                 }
             }
@@ -104,7 +104,7 @@ internal fun SurfaceCard(
             shape = RoundedCornerShape(AgDim.ControlRadius),
             colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.text),
         ) {
-            Text(text = "Добавить виджет на экран", style = AgType.body)
+            Text(text = s.dashAddWidget, style = AgType.body)
         }
     }
 }

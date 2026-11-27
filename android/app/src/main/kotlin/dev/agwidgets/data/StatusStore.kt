@@ -4,6 +4,9 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.content.res.Configuration
 import dev.agwidgets.BuildConfig
+import dev.agwidgets.ui.i18n.AgStrings
+import dev.agwidgets.ui.i18n.AppLanguage
+import dev.agwidgets.ui.i18n.stringsFor
 import dev.agwidgets.ui.theme.AgThemeMode
 import dev.agwidgets.ui.theme.normalizeThemeMode
 import dev.agwidgets.ui.theme.resolveAgTheme
@@ -28,6 +31,7 @@ object StatusStore {
     private const val KEY_LAST_ERROR = "last_error"
     private const val KEY_NOTIFIED_RESETS = "notified_resets"
     private const val KEY_THEME_MODE = "theme_mode"
+    private const val KEY_LANGUAGE = "app_language"
     private const val KEY_MODE = "mode"
     private const val KEY_COUPON_NOTIFIED = "coupon_notified"
 
@@ -351,6 +355,21 @@ object StatusStore {
         // Store only canonical ids; legacy `dark`/`light` are migrated on write.
         prefs(context).edit().putString(KEY_THEME_MODE, normalizeThemeMode(mode)).apply()
     }
+
+    /** Stored language mode: [AppLanguage.AUTO] unless the user picked one. */
+    fun getLanguage(context: Context): String =
+        AppLanguage.normalize(prefs(context).getString(KEY_LANGUAGE, AppLanguage.AUTO))
+
+    fun setLanguage(context: Context, mode: String) {
+        // Store only canonical ids; anything unknown falls back to `auto`.
+        synchronized(lock) {
+            prefs(context).edit().putString(KEY_LANGUAGE, AppLanguage.normalize(mode)).apply()
+        }
+    }
+
+    /** Strings for the resolved language, shared by the worker, notifier and widget. */
+    fun resolveStrings(context: Context): AgStrings =
+        stringsFor(AppLanguage.resolve(getLanguage(context)))
 
     fun isDarkTheme(context: Context): Boolean =
         resolveAgTheme(getThemeMode(context), isSystemDark(context)).isDark

@@ -23,6 +23,7 @@ import dev.agwidgets.data.ContextSummary
 import dev.agwidgets.ui.contextLevel
 import dev.agwidgets.ui.formatK
 import dev.agwidgets.ui.formatWindow
+import dev.agwidgets.ui.i18n.LocalStrings
 import dev.agwidgets.ui.prettyModel
 import dev.agwidgets.ui.theme.AgDim
 import dev.agwidgets.ui.theme.AgTheme
@@ -41,6 +42,7 @@ import kotlin.math.roundToInt
 @Composable
 internal fun ContextCard(context: ContextSummary?, updatedAt: String?, nowMs: Long) {
     val colors = AgTheme.colors
+    val s = LocalStrings.current
     val tokens = context?.tokens
     val window = context?.window
     val pct = context?.pct?.takeIf { it.isFinite() }
@@ -57,10 +59,10 @@ internal fun ContextCard(context: ContextSummary?, updatedAt: String?, nowMs: Lo
         else -> colors.muted
     }
     val chipText = when (level) {
-        "red" -> "Пора /compact"
-        "yellow" -> "Внимание"
-        "green" -> "Ок"
-        else -> "Ожидание"
+        "red" -> s.dashContextChipCompact
+        "yellow" -> s.dashContextChipAttention
+        "green" -> s.dashContextChipOk
+        else -> s.dashContextChipWaiting
     }
     val yellowPct = context?.yellowPct?.takeIf { it.isFinite() } ?: 40.0
     val redPct = context?.redPct?.takeIf { it.isFinite() } ?: 65.0
@@ -69,8 +71,8 @@ internal fun ContextCard(context: ContextSummary?, updatedAt: String?, nowMs: Lo
 
     GlassCard {
         SectionHeader(
-            serial = "01 / CONTEXT",
-            title = "Контекст",
+            serial = s.serialContext,
+            title = s.labelContext,
             chipText = chipText,
             chipColor = levelColor,
         )
@@ -78,16 +80,16 @@ internal fun ContextCard(context: ContextSummary?, updatedAt: String?, nowMs: Lo
         if (tokens == null) {
             Text(
                 text = if (context?.active == true) {
-                    "Текущий чат · ожидание ответа"
+                    s.dashContextWaiting
                 } else {
-                    "Нет данных с ПК — настройте канал ntfy в настройках"
+                    s.dashContextNoPcData
                 },
                 style = AgType.body,
                 color = colors.secondary,
             )
         } else {
             Text(
-                text = context.model?.let { prettyModel(it) } ?: "Текущий чат",
+                text = context.model?.let { prettyModel(it) } ?: s.dashContextCurrentChat,
                 style = AgType.section,
                 color = colors.text,
                 maxLines = 1,
@@ -107,7 +109,7 @@ internal fun ContextCard(context: ContextSummary?, updatedAt: String?, nowMs: Lo
                 if (window != null) {
                     Spacer(Modifier.width(AgDim.ControlGap))
                     Text(
-                        text = "из ${formatWindow(window)}",
+                        text = s.fill(s.dashContextOfWindow, "window" to formatWindow(window)),
                         style = AgType.body,
                         color = colors.secondary,
                         maxLines = 1,
@@ -119,7 +121,7 @@ internal fun ContextCard(context: ContextSummary?, updatedAt: String?, nowMs: Lo
                     Text(
                         // "занято" vs "осталось": the two cards can no longer be
                         // read as the same gauge.
-                        text = "${pct.roundToInt()}% занято",
+                        text = s.fill(s.dashContextPctUsed, "pct" to pct.roundToInt()),
                         style = AgType.title,
                         color = levelColor,
                         maxLines = 1,
@@ -140,13 +142,21 @@ internal fun ContextCard(context: ContextSummary?, updatedAt: String?, nowMs: Lo
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     Text(
-                        text = "Надёжно до ${formatK(warnTokens)} (${yellowPct.roundToInt()}%)",
+                        text = s.fill(
+                            s.dashContextSafeUntil,
+                            "tokens" to formatK(warnTokens),
+                            "pct" to yellowPct.roundToInt(),
+                        ),
                         style = AgType.caption,
                         color = colors.muted,
                         maxLines = 2,
                     )
                     Text(
-                        text = "Риск после ${formatK(riskTokens)} (${redPct.roundToInt()}%)",
+                        text = s.fill(
+                            s.dashContextRiskAfter,
+                            "tokens" to formatK(riskTokens),
+                            "pct" to redPct.roundToInt(),
+                        ),
                         style = AgType.caption,
                         color = colors.muted,
                         maxLines = 2,
@@ -156,7 +166,7 @@ internal fun ContextCard(context: ContextSummary?, updatedAt: String?, nowMs: Lo
         }
 
         if (updatedAt != null) {
-            val label = updatedLabel(updatedAt, nowMs)
+            val label = updatedLabel(updatedAt, nowMs, s)
             if (label != "—") {
                 Text(
                     text = label,

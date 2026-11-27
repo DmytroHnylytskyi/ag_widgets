@@ -16,6 +16,7 @@ const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'agw-notifications-'));
 process.env.AGW_USER_DATA_DIR = path.join(tmpRoot, 'bootstrap');
 
 const notifications = require('../src/main/notifications.js');
+const preferences = require('../src/main/preferences.js');
 const WINDOW = 524288;
 
 /** Point the module at a clean profile directory and drop in-memory state. */
@@ -23,6 +24,8 @@ function freshPrefsDir(name) {
   const dir = path.join(tmpRoot, name);
   fs.mkdirSync(dir, { recursive: true });
   process.env.AGW_USER_DATA_DIR = dir;
+  // Pin RU explicitly so these contract tests stay deterministic on EN CI runners.
+  preferences.setLanguage('ru');
   notifications.resetRuntime();
   return dir;
 }

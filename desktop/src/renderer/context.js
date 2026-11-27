@@ -7,9 +7,15 @@
 (function (root) {
   const AGW = (root.AGW = root.AGW || {});
   const format = AGW.format || (typeof require === 'function' ? require('./format.js') : null);
+  const i18n = AGW.i18n || (typeof require === 'function' ? require('../shared/i18n.js') : null);
   const { clamp, computeZone, formatTokens, formatWindow, prettyModel, shortAge } = format;
   const { DEFAULT_RED_PCT, DEFAULT_YELLOW_PCT } = format;
   const CIRCUMFERENCE = 2 * Math.PI * 48; // r=48 in the SVG gauge.
+
+  /** Dictionary lookup with the RU default so Node tests stay byte-identical. */
+  function tr(key, vars, lang) {
+    return i18n && typeof i18n.t === 'function' ? i18n.t(key, vars, lang) : key;
+  }
 
   function validLevel(value) {
     return value === 'green' || value === 'yellow' || value === 'red' ? value : null;
@@ -75,6 +81,7 @@
       showRecent: source.show_recent !== false,
       recentCount,
       showThresholds: source.show_thresholds !== false,
+      lang: source.lang === 'en' ? 'en' : 'ru',
     };
   }
 
@@ -255,7 +262,7 @@
    * Paint the health zone through CSS classes and percentage variables only:
    * the colours for dark/light themes live in styles.css.
    */
-  function renderZone(info) {
+  function renderZone(info, lang = 'ru') {
     const track = document.getElementById('zone-track');
     const marker = document.getElementById('zone-marker');
     const warnLabel = document.getElementById('zone-warn-label');
@@ -279,13 +286,13 @@
         const riskStop = clamp(Math.max(Math.round(info.redPct), warnStop + 1), 2, 100);
         track.style.setProperty('--zone-warn-stop', `${warnStop}%`);
         track.style.setProperty('--zone-risk-stop', `${riskStop}%`);
-        track.title =
-          `Порог ${Math.round(info.yellowPct)}% и ${Math.round(info.redPct)}% окна. ` +
-          `После ~${Math.round(info.yellowPct)}% деградация на сложных задачах заметна, ` +
-          `после ~${Math.round(info.redPct)}% надёжная часть окна обычно заканчивается ` +
-          '(RULER, NoLiMa, Chroma Context Rot).';
+        track.title = tr(
+          'dashboard.context.zoneTooltip',
+          { yellow: Math.round(info.yellowPct), red: Math.round(info.redPct) },
+          lang,
+        );
       } else {
-        track.title = 'Окно модели неизвестно: задайте model_windows в config.json';
+        track.title = tr('dashboard.context.zoneUnknown', null, lang);
       }
     }
 
@@ -293,26 +300,26 @@
     if (warnLabel) {
       warnLabel.textContent =
         info && info.known && info.warnTokens !== null
-          ? `надёжно до ${formatTokens(info.warnTokens)}`
-          : 'надёжно до —';
+          ? tr('dashboard.zones.safeUntil', { tokens: formatTokens(info.warnTokens) }, lang)
+          : tr('dashboard.zones.safeUntilUnknown', null, lang);
     }
     if (riskLabel) {
       riskLabel.textContent =
         info && info.known && info.riskTokens !== null
-          ? `риск после ${formatTokens(info.riskTokens)}`
-          : 'риск после —';
+          ? tr('dashboard.zones.riskAfter', { tokens: formatTokens(info.riskTokens) }, lang)
+          : tr('dashboard.zones.riskAfterUnknown', null, lang);
     }
   }
 
   /** Footer legend follows the backend thresholds, or shows a dash while the window is unknown. */
-  function renderLegend(info) {
+  function renderLegend(info, lang = 'ru') {
     const known = Boolean(info && info.known);
     const yellow = known ? Math.round(info.yellowPct) : null;
     const red = known ? Math.round(info.redPct) : null;
     const text = {
-      ok: known ? `0–${yellow}%` : '—',
-      warn: known ? `${yellow}–${red}%` : '—',
-      risk: known ? `${red}%+` : '—',
+      ok: known ? tr('dashboard.zones.legendOk', { yellow }, lang) : '—',
+      warn: known ? tr('dashboard.zones.legendWarn', { yellow, red }, lang) : '—',
+      risk: known ? tr('dashboard.zones.legendRisk', { red }, lang) : '—',
     };
 
     // The footer legend is the Classic home of the scale; modern themes render
@@ -331,26 +338,28 @@
     if (zone) zone.classList.toggle('hidden', !visible);
   }
 
-  function renderEmpty(info, options) {
+  function renderEmpty(info, options, lang = 'ru') {
     const hasChat = Boolean(info.activeChat && info.activeChat.id);
     const chatTitle = info.activeChat && info.activeChat.title ? info.activeChat.title : '';
     const card = document.getElementById('context-card');
     if (card) card.classList.add('is-empty');
     document.getElementById('ctx-tokens').textContent = '—';
-    document.getElementById('ctx-token-sub').textContent = 'токены';
+    document.getElementById('ctx-token-sub').textContent = tr('dashboard.context.tokensUnit', null, lang);
     document.getElementById('ctx-model').textContent = hasChat
-      ? 'Ожидание ответа'
-      : 'Нет активной сессии';
+      ? tr('dashboard.empty.waitingAnswer', null, lang)
+      : tr('dashboard.empty.noActiveSession', null, lang);
     const workspaceEl = document.getElementById('ctx-workspace');
     const workspaceNameEmpty = document.getElementById('ctx-workspace-name');
     const workspacePrefixEmpty = workspaceEl ? workspaceEl.querySelector('.ws-prefix') : null;
-    if (workspaceNameEmpty) workspaceNameEmpty.textContent = hasChat ? 'Выбранный чат' : '';
+    if (workspaceNameEmpty) {
+      workspaceNameEmpty.textContent = hasChat ? tr('dashboard.empty.selectedChat', null, lang) : '';
+    }
     if (workspacePrefixEmpty) workspacePrefixEmpty.classList.add('hidden');
     workspaceEl.classList.toggle('hidden', !hasChat);
     const snippetEl = document.getElementById('ctx-snippet');
     snippetEl.textContent = hasChat
-      ? 'Ответьте модели, чтобы увидеть контекст'
-      : 'Отправьте запрос в Antigravity — данные появятся здесь';
+      ? tr('dashboard.empty.replyHint', null, lang)
+      : tr('dashboard.empty.sendHint', null, lang);
     snippetEl.classList.remove('hidden');
 
     const alert = document.getElementById('ctx-alert');
@@ -371,14 +380,16 @@
     document.getElementById('ring-satellite').style.opacity = '0';
 
     const material = document.getElementById('ctx-material');
-    material.textContent = hasChat ? chatTitle || 'Новый чат' : 'Нет сессии';
+    material.textContent = hasChat
+      ? chatTitle || tr('dashboard.empty.newChat', null, lang)
+      : tr('dashboard.empty.noSession', null, lang);
     material.title = chatTitle;
 
     const recent = document.getElementById('ctx-recent');
     recent.innerHTML = '';
     recent.classList.add('hidden');
 
-    renderLegend(info);
+    renderLegend(info, lang);
     setZoneVisible(false);
   }
 
@@ -420,11 +431,12 @@
 
   function render(context, status, activeChat, chatTitles = {}, options = {}) {
     const opts = normalizeOptions(options);
+    const lang = opts.lang;
     const info = contextInfo(context, status, activeChat);
     const card = document.getElementById('context-card');
     if (card) card.classList.remove('is-empty');
     if (!info.cur) {
-      renderEmpty(info, opts);
+      renderEmpty(info, opts, lang);
       return;
     }
 
@@ -440,16 +452,20 @@
     if (classic) {
       tokenSub.textContent =
         window && typeof pct === 'number'
-          ? `${Math.round(pct)}% из ${formatWindow(window)}`
-          : 'окно не задано';
+          ? tr('dashboard.context.pctOfWindow', { pct: Math.round(pct), window: formatWindow(window) }, lang)
+          : tr('dashboard.context.windowUnset', null, lang);
       tokenSub.title = '';
     } else if (typeof pct === 'number') {
-      tokenSub.textContent = compactRing ? `${Math.round(pct)}%` : `${Math.round(pct)}% занято`;
+      tokenSub.textContent = compactRing
+        ? tr('dashboard.context.pctOnly', { pct: Math.round(pct) }, lang)
+        : tr('dashboard.context.pctBusy', { pct: Math.round(pct) }, lang);
       // The modern ring cannot hold the window size next to the percentage, so
       // `512K` stays available through the tooltip (D-07).
-      tokenSub.title = window ? `${Math.round(pct)}% из ${formatWindow(window)}` : '';
+      tokenSub.title = window
+        ? tr('dashboard.context.pctOfWindow', { pct: Math.round(pct), window: formatWindow(window) }, lang)
+        : '';
     } else {
-      tokenSub.textContent = 'окно не задано';
+      tokenSub.textContent = tr('dashboard.context.windowUnset', null, lang);
       tokenSub.title = '';
     }
 
@@ -477,14 +493,18 @@
     material.textContent = chatTitle
       ? chatTitle
       : window
-        ? `${prettyModel(cur.model)} · ${formatWindow(window)}`
-        : prettyModel(cur.model);
+        ? tr(
+            'dashboard.context.modelWithWindow',
+            { model: prettyModel(cur.model, lang), window: formatWindow(window) },
+            lang,
+          )
+        : prettyModel(cur.model, lang);
     material.title = chatTitle || '';
 
     const model = document.getElementById('ctx-model');
-    model.textContent = prettyModel(cur.model);
+    model.textContent = prettyModel(cur.model, lang);
     model.title = cur.model || '';
-    const age = shortAge(cur.updated_at);
+    const age = shortAge(cur.updated_at, null, lang);
     // Classic renders the freshness in the titlebar (`#updated-time`), so the
     // project line must not repeat it (D-07). The `Проект:` prefix is its own
     // span so a narrow window can drop it in CSS alone (D-12).
@@ -493,8 +513,10 @@
     const workspacePrefix = workspaceEl ? workspaceEl.querySelector('.ws-prefix') : null;
     if (workspaceName) {
       workspaceName.textContent = cur.workspace
-        ? `${cur.workspace}${!classic && age ? ` · ${age}` : ''}`
-        : 'Без проекта';
+        ? !classic && age
+          ? tr('dashboard.context.workspaceWithAge', { workspace: cur.workspace, age }, lang)
+          : cur.workspace
+        : tr('dashboard.context.noProject', null, lang);
     }
     if (workspacePrefix) workspacePrefix.classList.toggle('hidden', !cur.workspace);
     workspaceEl.classList.remove('hidden');
@@ -507,7 +529,13 @@
     placeLevelPill(pill);
     pill.className = `status-pill level-${level === 'unknown' ? 'idle' : level}`;
     pill.textContent =
-      level === 'red' ? 'Риск' : level === 'yellow' ? 'Внимание' : level === 'green' ? 'Норма' : '—';
+      level === 'red'
+        ? tr('status.level.red', null, lang)
+        : level === 'yellow'
+          ? tr('status.level.yellow', null, lang)
+          : level === 'green'
+            ? tr('status.level.green', null, lang)
+            : '—';
     pill.classList.toggle('hidden', level === 'unknown');
 
     const alert = document.getElementById('ctx-alert');
@@ -515,11 +543,11 @@
       alert.classList.add('hidden');
     } else if (level === 'red') {
       alert.className = 'ctx-alert';
-      alert.textContent = 'Пора /compact';
+      alert.textContent = tr('dashboard.context.compactAlert', null, lang);
       alert.classList.remove('hidden');
     } else if (level === 'yellow') {
       alert.className = 'ctx-alert warn';
-      alert.textContent = 'Контекст растёт';
+      alert.textContent = tr('dashboard.context.rising', null, lang);
       alert.classList.remove('hidden');
     } else {
       alert.classList.add('hidden');
@@ -527,8 +555,8 @@
 
     setZoneVisible(opts.showThresholds);
     if (opts.showThresholds) {
-      renderZone(info);
-      renderLegend(info);
+      renderZone(info, lang);
+      renderLegend(info, lang);
     }
 
     if (opts.showRecent) {

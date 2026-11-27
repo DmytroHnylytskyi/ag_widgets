@@ -6,8 +6,15 @@
  */
 (function (root) {
   const AGW = (root.AGW = root.AGW || {});
+  // The dictionary loads first in the renderer; Node tests require it lazily
+  // so these pure helpers keep working without a DOM.
+  const i18n = AGW.i18n || (typeof require === 'function' ? require('../shared/i18n.js') : null);
   const DEFAULT_YELLOW_PCT = 40;
   const DEFAULT_RED_PCT = 65;
+
+  function tr(key, vars, lang) {
+    return i18n && typeof i18n.t === 'function' ? i18n.t(key, vars, lang) : key;
+  }
 
   function trimWhole(text) {
     return text.replace(/\.0$/, '');
@@ -42,8 +49,8 @@
   }
 
   /** "Gemini 4 Neon (High)" -> "Gemini 4 Neon"; "5 5" -> "5.5". */
-  function prettyModel(raw) {
-    if (!raw) return 'Неизвестная модель';
+  function prettyModel(raw, lang = 'ru') {
+    if (!raw) return tr('status.unknownModel', null, lang);
     const efforts = new Set(['low', 'medium', 'high', 'xhigh', 'max', 'minimal']);
     const parts = String(raw).split('-').filter(Boolean);
     const last = (parts[parts.length - 1] || '').toLowerCase();
@@ -54,19 +61,10 @@
     return base.replace(/\b(\d+)\s+(\d+)\b/g, '$1.$2');
   }
 
-  function formatCountdown(iso) {
-    if (!iso) return '';
-    const target = new Date(iso);
-    if (Number.isNaN(target.getTime()) || target.getTime() <= 0) return '';
-    const diffSec = Math.max(0, Math.floor((target.getTime() - Date.now()) / 1000));
-    const hhmm = target.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-    if (diffSec <= 0) return `сброс сейчас · ${hhmm}`;
-    const days = Math.floor(diffSec / 86400);
-    const hours = Math.floor((diffSec % 86400) / 3600);
-    const minutes = Math.floor((diffSec % 3600) / 60);
-    if (days > 0) return `${days}д ${hours}ч · ${hhmm}`;
-    if (hours > 0) return `${hours}ч ${minutes}м · ${hhmm}`;
-    return `${minutes}м · ${hhmm}`;
+  /** Countdown to a reset, e.g. `4ч 15м · 18:00`; RU by contract default. */
+  function formatCountdown(iso, nowMs, lang = 'ru') {
+    if (!i18n || typeof i18n.formatCountdown !== 'function') return '';
+    return i18n.formatCountdown(iso, nowMs, lang);
   }
 
   function formatEndDate(iso) {
@@ -80,16 +78,10 @@
     return Math.max(min, Math.min(max, value));
   }
 
-  function shortAge(iso) {
-    if (!iso) return '';
-    const date = new Date(iso);
-    if (Number.isNaN(date.getTime())) return '';
-    const minutes = Math.max(0, Math.round((Date.now() - date.getTime()) / 60000));
-    if (minutes < 1) return 'только что';
-    if (minutes < 60) return `${minutes}м назад`;
-    const hours = Math.round(minutes / 60);
-    if (hours < 24) return `${hours}ч назад`;
-    return `${Math.round(hours / 24)}д назад`;
+  /** Relative age (`только что`, `5м назад`, …); RU by contract default. */
+  function shortAge(iso, nowMs, lang = 'ru') {
+    if (!i18n || typeof i18n.shortAge !== 'function') return '';
+    return i18n.shortAge(iso, nowMs, lang);
   }
 
   /**

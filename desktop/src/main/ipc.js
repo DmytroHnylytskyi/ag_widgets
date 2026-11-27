@@ -9,6 +9,8 @@ const pairing = require('./pairing');
 const windowApi = require('./window');
 const appearance = require('./appearance');
 const notifications = require('./notifications');
+const preferences = require('./preferences');
+const i18n = require('../shared/i18n.js');
 const { copyTextToClipboard } = require('./clipboard');
 const { logError } = require('./logger');
 const { refreshMenu, showContextMenu, loginItemOptions } = require('./tray');
@@ -37,6 +39,28 @@ const EXTERNAL_ACTIONS = {
   'config-dir': () => shell.openPath(APP_DIR),
 };
 
+/**
+ * Localized text for a built-in preset. Falls back to the value shipped in
+ * `appearance.BUILT_IN_PRESETS` when the dictionary has no key for it.
+ */
+function localizedPresetField(id, field, lang, fallback) {
+  const key = field === 'hint' ? `preset.${id}Hint` : `preset.${id}`;
+  return i18n.hasKey(key) ? i18n.t(key, null, lang) : fallback;
+}
+
+/**
+ * Reasons returned by `appearance.importAppearanceJson` mapped to their UI
+ * error keys; every reason (including `save_failed`) has a dedicated key.
+ */
+const IMPORT_ERROR_KEYS = Object.freeze({
+  not_string: 'settings.errors.expectedString',
+  empty: 'settings.errors.emptyJson',
+  too_large: 'settings.errors.tooLarge',
+  invalid_json: 'settings.errors.invalidJson',
+  root_not_object: 'settings.errors.rootNotObject',
+  save_failed: 'settings.errors.saveFailed',
+});
+
 /** Windows dark mode flag; never throws. */
 function systemPrefersDark() {
   try {
@@ -54,6 +78,8 @@ function systemPrefersDark() {
 function buildSettingsSnapshot() {
   const settings = appearance.loadAppearance();
   const systemDark = systemPrefersDark();
+  const language = preferences.getLanguage();
+  const resolvedLanguage = preferences.resolveCurrentLanguage();
 
   let alwaysOnTop = false;
   try {
@@ -92,11 +118,24 @@ function buildSettingsSnapshot() {
     notifications: notificationPrefs,
     /** Size constraints of the current form factor (used by the Settings window). */
     bounds: appearance.formFactorBounds(settings.preset_mode),
+    /** Interface language: the stored mode and the concrete `ru`/`en` in effect. */
+    language,
+    resolvedLanguage,
     /** Built-in presets in display order, without their patches. */
     presets: appearance.PRESET_IDS.map((id) => ({
       id,
-      label: appearance.BUILT_IN_PRESETS[id].label,
-      hint: appearance.BUILT_IN_PRESETS[id].hint,
+      label: localizedPresetField(
+        id,
+        'label',
+        resolvedLanguage,
+        appearance.BUILT_IN_PRESETS[id].label,
+      ),
+      hint: localizedPresetField(
+        id,
+        'hint',
+        resolvedLanguage,
+        appearance.BUILT_IN_PRESETS[id].hint,
+      ),
     })),
   };
 }
@@ -239,6 +278,16 @@ function registerIpc() {
         return { ok: false, error: 'Invalid patch' };
       }
 
+      // The interface language lives outside appearance.json and is saved on
+      // its own, independent of every other key in the patch.
+      if (Object.prototype.hasOwnProperty.call(patch, 'language')) {
+        preferences.setLanguage(patch.language);
+        const resolvedLanguage = preferences.resolveCurrentLanguage();
+        if (typeof windowApi.setSettingsWindowTitle === 'function') {
+          windowApi.setSettingsWindowTitle(resolvedLanguage);
+        }
+      }
+
       if (APPEARANCE_KEYS.some((key) => Object.prototype.hasOwnProperty.call(patch, key))) {
         try {
           appearance.saveAppearance(patch);
@@ -326,12 +375,28 @@ function registerIpc() {
     'agw:import-appearance',
     fromTrustedWindow((_event, json) => {
       const result = appearance.importAppearanceJson(json);
-      if (!result.ok) return result;
+      if (!result.ok) {
+        const errorKey = IMPORT_ERROR_KEYS[result.reason];
+        if (!errorKey) return result;
+        return {
+          ...result,
+          error: i18n.t(errorKey, null, preferences.resolveCurrentLanguage()),
+        };
+      }
       try {
         appearance.saveAppearance(result.appearance);
       } catch (error) {
         logError('importAppearance', error);
-        return { ok: false, error: 'Не удалось сохранить настройки', code: 'invalid' };
+        return {
+          ok: false,
+          error: i18n.t(
+            IMPORT_ERROR_KEYS.save_failed,
+            null,
+            preferences.resolveCurrentLanguage(),
+          ),
+          code: 'invalid',
+          reason: 'save_failed',
+        };
       }
       const snapshot = buildSettingsSnapshot();
       windowApi.applyAppearanceToWindows(snapshot);

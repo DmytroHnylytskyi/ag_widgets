@@ -13,6 +13,8 @@
 const path = require('path');
 const paths = require('./paths');
 const { readJson, writeJsonAtomic } = require('./storage');
+const preferences = require('./preferences');
+const i18n = require('../shared/i18n.js');
 const { contextInfo } = require('../renderer/context.js');
 const { formatTokens, prettyModel, computeZone } = require('../renderer/format.js');
 
@@ -196,9 +198,9 @@ function bucketIdOf(bucket) {
 }
 
 /** Human label for a 5-hour bucket, matching the desktop/Android naming. */
-function bucketLabel(id) {
-  if (id.startsWith('gemini-')) return 'Gemini (5 ч)';
-  if (id.startsWith('3p-')) return 'Claude/GPT (5 ч)';
+function bucketLabel(id, lang = 'ru') {
+  if (id.startsWith('gemini-')) return i18n.t('notif.bucket.gemini5h', null, lang);
+  if (id.startsWith('3p-')) return i18n.t('notif.bucket.thirdParty5h', null, lang);
   return id;
 }
 
@@ -257,6 +259,11 @@ function appendNotifiedReset(prefs, dedupeKey) {
 function evaluateNotifications(prevState, currState, prefs, runtimeState = {}) {
   const prefsN = normalizeNotificationPrefs(prefs);
   const runtime = runtimeState && typeof runtimeState === 'object' ? runtimeState : {};
+  // Event texts follow the interface language; RU is the contract default.
+  const lang =
+    typeof runtime.lang === 'string' && runtime.lang.trim().toLowerCase() === 'en'
+      ? 'en'
+      : 'ru';
 
   // First snapshot after startup is a baseline: remember it, notify nothing.
   if (prevState == null || currState == null) {
@@ -300,10 +307,16 @@ function evaluateNotifications(prevState, currState, prefs, runtimeState = {}) {
       typeof currInfo.pct === 'number' && Number.isFinite(currInfo.pct) ? currInfo.pct : 0;
     events.push({
       kind: 'context_red',
-      title: 'Пора сделать /compact',
-      body:
-        `${prettyModel(currInfo.cur && currInfo.cur.model)}: ` +
-        `${formatTokens(currInfo.tokens)} (${Math.round(pct)}%) — контекст в красной зоне`,
+      title: i18n.t('notif.contextRed.title', null, lang),
+      body: i18n.t(
+        'notif.contextRed.body',
+        {
+          model: prettyModel(currInfo.cur && currInfo.cur.model, lang),
+          tokens: formatTokens(currInfo.tokens),
+          pct: Math.round(pct),
+        },
+        lang,
+      ),
     });
   }
 
@@ -335,8 +348,8 @@ function evaluateNotifications(prevState, currState, prefs, runtimeState = {}) {
       const detail = String(zcode.matched || '').trim();
       events.push({
         kind: 'zcode_voucher',
-        title: 'В ZCode доступен ваучер!',
-        body: detail || 'Откройте ZCode, чтобы забрать 300–500M токенов',
+        title: i18n.t('notif.couponAvailable.title', null, lang),
+        body: detail || i18n.t('notif.couponFallback.body', null, lang),
       });
     }
   }
@@ -397,8 +410,15 @@ function evaluateNotifications(prevState, currState, prefs, runtimeState = {}) {
     appendNotifiedReset(nextPrefs, dedupeKey);
     events.push({
       kind: 'quota_5h_reset',
-      title: `Квота ${bucketLabel(bucketIdOf(bucket))} обновилась`,
-      body: currFrac !== null ? `Доступно: ${Math.round(currFrac * 100)}%` : 'Лимит сброшен',
+      title: i18n.t(
+        'notif.quotaReset.title',
+        { bucket: bucketLabel(bucketIdOf(bucket), lang) },
+        lang,
+      ),
+      body:
+        currFrac !== null
+          ? i18n.t('notif.quotaAvailable.body', { pct: Math.round(currFrac * 100) }, lang)
+          : i18n.t('notif.quotaResetLimit.body', null, lang),
     });
   }
 
@@ -459,9 +479,10 @@ function showNotification(options) {
 /** Settings-window smoke test; reports support separately from the result. */
 function sendTestNotification() {
   if (!isNotificationSupported()) return { ok: false, supported: false };
+  const lang = preferences.resolveCurrentLanguage();
   const ok = showNotification({
-    title: 'AG Widgets',
-    body: 'Тестовое уведомление: всё работает.',
+    title: i18n.t('notif.test.title', null, lang),
+    body: i18n.t('notif.test.body', null, lang),
   });
   return { ok, supported: true };
 }
@@ -472,7 +493,10 @@ function sendTestNotification() {
  */
 function handleStateUpdate(state) {
   const prefs = loadPreferences();
-  const result = evaluateNotifications(previousState, state, prefs, { notifiedRedChats });
+  const result = evaluateNotifications(previousState, state, prefs, {
+    notifiedRedChats,
+    lang: preferences.resolveCurrentLanguage(),
+  });
 
   previousState = state;
   notifiedRedChats = result.notifiedRedChats;

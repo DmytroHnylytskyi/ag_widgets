@@ -4,9 +4,10 @@
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none';" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Настройки — AG Widgets</title>
+  <title data-i18n="settings.windowTitle">Настройки — AG Widgets</title>
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="settings.css" />
+  <script src="src/shared/i18n.js" defer></script>
   <script src="src/renderer/theme-math.js" defer></script>
   <script src="src/renderer/qr.js" defer></script>
   <script src="src/renderer/settings.js" defer></script>
@@ -14,41 +15,41 @@
 <body>
   <div class="settings-shell">
     <header class="settings-header">
-      <h1 class="settings-title">Настройки</h1>
-      <p class="settings-subtitle">Внешний вид и поведение виджета</p>
-      <div class="tabs" role="tablist" aria-label="Разделы настроек">
-        <button id="tab-appearance" class="tab" role="tab" type="button" aria-selected="true" aria-controls="panel-appearance">Оформление</button>
-        <button id="tab-builder" class="tab" role="tab" type="button" aria-selected="false" aria-controls="panel-builder">Конструктор</button>
-        <button id="tab-sync" class="tab" role="tab" type="button" aria-selected="false" aria-controls="panel-sync">Синхронизация</button>
+      <h1 class="settings-title" data-i18n="settings.title">Настройки</h1>
+      <p class="settings-subtitle" data-i18n="settings.subtitle">Внешний вид и поведение виджета</p>
+      <div class="tabs" role="tablist" aria-label="Разделы настроек" data-i18n-aria="settings.tabsAria">
+        <button id="tab-appearance" class="tab" role="tab" type="button" aria-selected="true" aria-controls="panel-appearance" data-i18n="settings.tab.appearance">Оформление</button>
+        <button id="tab-builder" class="tab" role="tab" type="button" aria-selected="false" aria-controls="panel-builder" data-i18n="settings.tab.builder">Конструктор</button>
+        <button id="tab-sync" class="tab" role="tab" type="button" aria-selected="false" aria-controls="panel-sync" data-i18n="settings.tab.sync">Синхронизация</button>
       </div>
     </header>
 
     <main class="settings-main">
-      <p id="bridge-notice" class="notice hidden" role="status">Настройки доступны только в приложении.</p>
+      <p id="bridge-notice" class="notice hidden" role="status" data-i18n="settings.bridgeNotice">Настройки доступны только в приложении.</p>
 
       <section id="panel-appearance" class="tabpanel" role="tabpanel" aria-labelledby="tab-appearance">
         <section class="panel" aria-labelledby="presets-heading">
-          <h2 id="presets-heading" class="panel-title">Готовые пресеты</h2>
+          <h2 id="presets-heading" class="panel-title" data-i18n="settings.appearance.presetsTitle">Готовые пресеты</h2>
           <div class="preset-grid" role="group" aria-labelledby="presets-heading">
-            <button class="preset-btn" type="button" data-preset="full">Полный</button>
-            <button class="preset-btn" type="button" data-preset="compact">Компактный</button>
-            <button class="preset-btn" type="button" data-preset="minibar">Мини-бар</button>
-            <button class="preset-btn" type="button" data-preset="pill">Пилюля</button>
-            <button class="preset-btn" type="button" data-preset="paper">Светлая бумага</button>
+            <button class="preset-btn" type="button" data-preset="full" data-i18n="preset.full">Полный</button>
+            <button class="preset-btn" type="button" data-preset="compact" data-i18n="preset.compact">Компактный</button>
+            <button class="preset-btn" type="button" data-preset="minibar" data-i18n="preset.minibar">Мини-бар</button>
+            <button class="preset-btn" type="button" data-preset="pill" data-i18n="preset.pill">Пилюля</button>
+            <button class="preset-btn" type="button" data-preset="paper" data-i18n="preset.paper">Светлая бумага</button>
             <button class="preset-btn" type="button" data-preset="classic">Classic</button>
           </div>
         </section>
 
         <section class="panel" aria-labelledby="appearance-heading">
-          <h2 id="appearance-heading" class="panel-title">Тема</h2>
+          <h2 id="appearance-heading" class="panel-title" data-i18n="settings.appearance.themeTitle">Тема</h2>
 
-          <div class="theme-grid" role="group" aria-label="Тема оформления">
+          <div class="theme-grid" role="group" aria-label="Тема оформления" data-i18n-aria="settings.appearance.themeGroupAria">
             <button type="button" class="theme-option" data-theme-value="system" aria-pressed="false">
               <span class="theme-swatch" aria-hidden="true">
                 <span class="swatch-card"></span>
                 <span class="swatch-accent"></span>
               </span>
-              <span class="theme-label" title="Системная тема">Авто</span>
+              <span class="theme-label" title="Системная тема" data-i18n="theme.auto" data-i18n-title="theme.autoTitle">Авто</span>
             </button>
             <button type="button" class="theme-option" data-theme-value="graphite" aria-pressed="false">
               <span class="theme-swatch" aria-hidden="true">
@@ -88,42 +89,51 @@
           </div>
 
           <div id="classic-variant" class="variant-row hidden" aria-hidden="true">
-            <span id="classic-variant-label" class="field-label">Вариант Classic</span>
+            <span id="classic-variant-label" class="field-label" data-i18n="classic.variantLabel">Вариант Classic</span>
             <div class="segmented" role="group" aria-labelledby="classic-variant-label">
-              <button type="button" class="segment" data-variant-value="dark" aria-pressed="false">Тёмная</button>
-              <button type="button" class="segment" data-variant-value="light" aria-pressed="false">Светлая</button>
+              <button type="button" class="segment" data-variant-value="dark" aria-pressed="false" data-i18n="classic.dark">Тёмная</button>
+              <button type="button" class="segment" data-variant-value="light" aria-pressed="false" data-i18n="classic.light">Светлая</button>
             </div>
+          </div>
+        </section>
+
+        <section class="panel" aria-labelledby="language-heading">
+          <h2 id="language-heading" class="panel-title" data-i18n="settings.language.title">Язык</h2>
+          <div class="segmented segmented-wide" role="group" aria-labelledby="language-heading" data-i18n-aria="settings.language.aria">
+            <button type="button" class="segment" data-language="auto" aria-pressed="false" data-i18n="settings.language.auto">Авто</button>
+            <button type="button" class="segment" data-language="ru" aria-pressed="false" data-i18n="settings.language.ru">Русский</button>
+            <button type="button" class="segment" data-language="en" aria-pressed="false" data-i18n="settings.language.en">English</button>
           </div>
         </section>
 
         <section class="panel" aria-labelledby="accent-heading">
           <div class="panel-head">
-            <h2 id="accent-heading" class="panel-title">Акцентный цвет</h2>
-            <output id="accent-value" class="value-text" for="accent-hex">авто</output>
+            <h2 id="accent-heading" class="panel-title" data-i18n="settings.appearance.accentTitle">Акцентный цвет</h2>
+            <output id="accent-value" class="value-text" for="accent-hex" data-i18n="settings.appearance.accentAuto">авто</output>
           </div>
 
-          <div class="accent-swatches" role="group" aria-label="Быстрый выбор акцента">
-            <button class="swatch" type="button" data-accent="#60a5fa" style="--swatch:#60a5fa" aria-label="Синий #60a5fa" aria-pressed="false"></button>
-            <button class="swatch" type="button" data-accent="#34d399" style="--swatch:#34d399" aria-label="Зелёный #34d399" aria-pressed="false"></button>
-            <button class="swatch" type="button" data-accent="#a78bfa" style="--swatch:#a78bfa" aria-label="Фиолетовый #a78bfa" aria-pressed="false"></button>
-            <button class="swatch" type="button" data-accent="#f59e0b" style="--swatch:#f59e0b" aria-label="Оранжевый #f59e0b" aria-pressed="false"></button>
-            <button class="swatch" type="button" data-accent="#f43f5e" style="--swatch:#f43f5e" aria-label="Розовый #f43f5e" aria-pressed="false"></button>
-            <button class="swatch" type="button" data-accent="#38bdf8" style="--swatch:#38bdf8" aria-label="Голубой #38bdf8" aria-pressed="false"></button>
+          <div class="accent-swatches" role="group" aria-label="Быстрый выбор акцента" data-i18n-aria="settings.appearance.accentGroupAria">
+            <button class="swatch" type="button" data-accent="#60a5fa" style="--swatch:#60a5fa" aria-label="Синий #60a5fa" aria-pressed="false" data-i18n-aria="settings.accent.blue"></button>
+            <button class="swatch" type="button" data-accent="#34d399" style="--swatch:#34d399" aria-label="Зелёный #34d399" aria-pressed="false" data-i18n-aria="settings.accent.green"></button>
+            <button class="swatch" type="button" data-accent="#a78bfa" style="--swatch:#a78bfa" aria-label="Фиолетовый #a78bfa" aria-pressed="false" data-i18n-aria="settings.accent.purple"></button>
+            <button class="swatch" type="button" data-accent="#f59e0b" style="--swatch:#f59e0b" aria-label="Оранжевый #f59e0b" aria-pressed="false" data-i18n-aria="settings.accent.orange"></button>
+            <button class="swatch" type="button" data-accent="#f43f5e" style="--swatch:#f43f5e" aria-label="Розовый #f43f5e" aria-pressed="false" data-i18n-aria="settings.accent.pink"></button>
+            <button class="swatch" type="button" data-accent="#38bdf8" style="--swatch:#38bdf8" aria-label="Голубой #38bdf8" aria-pressed="false" data-i18n-aria="settings.accent.sky"></button>
           </div>
 
           <div class="accent-inputs">
-            <input id="accent-color" class="color-input" type="color" value="#60a5fa" aria-label="Выбрать акцентный цвет" />
-            <input id="accent-hex" class="text-input" type="text" maxlength="7" placeholder="#60a5fa" spellcheck="false" aria-label="Акцентный цвет в формате HEX" />
-            <button id="accent-reset" class="ghost-btn" type="button">По умолчанию</button>
+            <input id="accent-color" class="color-input" type="color" value="#60a5fa" aria-label="Выбрать акцентный цвет" data-i18n-aria="settings.appearance.accentColorAria" />
+            <input id="accent-hex" class="text-input" type="text" maxlength="7" placeholder="#60a5fa" spellcheck="false" aria-label="Акцентный цвет в формате HEX" data-i18n-aria="settings.appearance.accentHexAria" />
+            <button id="accent-reset" class="ghost-btn" type="button" data-i18n="settings.appearance.accentReset">По умолчанию</button>
           </div>
         </section>
 
         <section class="panel" aria-labelledby="font-heading">
           <div class="panel-head">
-            <h2 id="font-heading" class="panel-title">Масштаб шрифта</h2>
+            <h2 id="font-heading" class="panel-title" data-i18n="settings.appearance.fontTitle">Масштаб шрифта</h2>
             <div class="value-row">
               <output id="font-scale-value" class="value-text" for="font-scale">100%</output>
-              <button id="font-scale-reset" class="icon-reset" type="button" title="Сбросить к 100%" aria-label="Сбросить масштаб к 100%">
+              <button id="font-scale-reset" class="icon-reset" type="button" title="Сбросить к 100%" aria-label="Сбросить масштаб к 100%" data-i18n-title="settings.appearance.fontResetTitle" data-i18n-aria="settings.appearance.fontResetAria">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <path d="M3 12a9 9 0 1 0 3.2-6.9"></path>
                   <path d="M3 4v5h5"></path>
@@ -139,7 +149,7 @@
 
         <section class="panel" aria-labelledby="opacity-heading">
           <div class="panel-head">
-            <h2 id="opacity-heading" class="panel-title">Прозрачность окна</h2>
+            <h2 id="opacity-heading" class="panel-title" data-i18n="settings.appearance.opacityTitle">Прозрачность окна</h2>
             <output id="opacity-value" class="value-text" for="opacity">100%</output>
           </div>
           <div class="range-row">
@@ -150,7 +160,7 @@
 
         <section class="panel" aria-labelledby="radius-heading">
           <div class="panel-head">
-            <h2 id="radius-heading" class="panel-title">Скругление углов</h2>
+            <h2 id="radius-heading" class="panel-title" data-i18n="settings.appearance.radiusTitle">Скругление углов</h2>
             <output id="corner-radius-value" class="value-text" for="corner-radius">12px</output>
           </div>
           <div class="range-row">
@@ -160,55 +170,55 @@
         </section>
 
         <section class="panel" aria-labelledby="density-heading">
-          <h2 id="density-heading" class="panel-title">Плотность</h2>
+          <h2 id="density-heading" class="panel-title" data-i18n="settings.appearance.densityTitle">Плотность</h2>
           <div class="segmented segmented-wide" role="group" aria-labelledby="density-heading">
-            <button type="button" class="segment" data-density="compact" aria-pressed="false">Компактно</button>
-            <button type="button" class="segment" data-density="comfortable" aria-pressed="false">Обычно</button>
-            <button type="button" class="segment" data-density="spacious" aria-pressed="false">Просторно</button>
+            <button type="button" class="segment" data-density="compact" aria-pressed="false" data-i18n="density.compact">Компактно</button>
+            <button type="button" class="segment" data-density="comfortable" aria-pressed="false" data-i18n="density.comfortable">Обычно</button>
+            <button type="button" class="segment" data-density="spacious" aria-pressed="false" data-i18n="density.spacious">Просторно</button>
           </div>
         </section>
 
         <section class="panel" aria-labelledby="behavior-heading">
-          <h2 id="behavior-heading" class="panel-title">Поведение окна</h2>
+          <h2 id="behavior-heading" class="panel-title" data-i18n="settings.appearance.behaviorTitle">Поведение окна</h2>
           <div class="switch-list">
             <div class="switch-row">
-              <span id="always-on-top-label" class="field-label">Поверх всех окон</span>
+              <span id="always-on-top-label" class="field-label" data-i18n="settings.appearance.alwaysOnTop">Поверх всех окон</span>
               <button id="always-on-top" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="always-on-top-label"></button>
             </div>
             <div class="switch-row">
-              <span id="open-at-login-label" class="field-label">Запускать при входе в Windows</span>
+              <span id="open-at-login-label" class="field-label" data-i18n="settings.appearance.openAtLogin">Запускать при входе в Windows</span>
               <button id="open-at-login" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="open-at-login-label"></button>
             </div>
           </div>
         </section>
 
         <section class="panel" aria-labelledby="notifications-heading">
-          <h2 id="notifications-heading" class="panel-title">Уведомления Windows</h2>
+          <h2 id="notifications-heading" class="panel-title" data-i18n="settings.notif.title">Уведомления Windows</h2>
 
           <div class="switch-list">
             <div class="switch-row">
-              <span id="notif-enabled-label" class="field-label">Показывать уведомления</span>
+              <span id="notif-enabled-label" class="field-label" data-i18n="settings.notif.enabled">Показывать уведомления</span>
               <button id="notif-enabled" class="switch" type="button" role="switch" aria-checked="true" aria-labelledby="notif-enabled-label"></button>
             </div>
           </div>
 
           <div id="notif-children" class="switch-list notif-children">
             <div class="switch-row">
-              <span id="notif-context-red-label" class="field-label">Контекст в красной зоне (/compact)</span>
+              <span id="notif-context-red-label" class="field-label" data-i18n="settings.notif.contextRed">Контекст в красной зоне (/compact)</span>
               <button id="notif-context-red" class="switch" type="button" role="switch" aria-checked="true" aria-labelledby="notif-context-red-label"></button>
             </div>
             <div class="switch-row">
-              <span id="notif-zcode-voucher-label" class="field-label">Доступен ваучер ZCode</span>
+              <span id="notif-zcode-voucher-label" class="field-label" data-i18n="settings.notif.zcodeVoucher">Доступен ваучер ZCode</span>
               <button id="notif-zcode-voucher" class="switch" type="button" role="switch" aria-checked="true" aria-labelledby="notif-zcode-voucher-label"></button>
             </div>
             <div class="switch-row">
-              <span id="notif-quota-reset-label" class="field-label">Сброс 5-часовой квоты</span>
+              <span id="notif-quota-reset-label" class="field-label" data-i18n="settings.notif.quotaReset">Сброс 5-часовой квоты</span>
               <button id="notif-quota-reset" class="switch" type="button" role="switch" aria-checked="true" aria-labelledby="notif-quota-reset-label"></button>
             </div>
           </div>
 
           <div class="notif-test">
-            <button id="notif-test" class="ghost-btn" type="button">Проверить уведомление</button>
+            <button id="notif-test" class="ghost-btn" type="button" data-i18n="settings.notif.test">Проверить уведомление</button>
             <p id="notif-status" class="notif-status" role="status" aria-live="polite"></p>
           </div>
         </section>
@@ -216,22 +226,22 @@
 
       <section id="panel-builder" class="tabpanel hidden" role="tabpanel" aria-labelledby="tab-builder">
         <section class="panel" aria-labelledby="mode-heading">
-          <h2 id="mode-heading" class="panel-title">Форм-фактор</h2>
+          <h2 id="mode-heading" class="panel-title" data-i18n="settings.builder.modeTitle">Форм-фактор</h2>
           <div class="mode-grid" role="group" aria-labelledby="mode-heading">
             <button class="mode-btn" type="button" data-mode="full" aria-pressed="false">
-              <span class="mode-name">Полный</span>
+              <span class="mode-name" data-i18n="mode.full">Полный</span>
               <span class="mode-size">400×640</span>
             </button>
             <button class="mode-btn" type="button" data-mode="compact" aria-pressed="false">
-              <span class="mode-name">Компактный</span>
+              <span class="mode-name" data-i18n="mode.compact">Компактный</span>
               <span class="mode-size">330×270</span>
             </button>
             <button class="mode-btn" type="button" data-mode="minibar" aria-pressed="false">
-              <span class="mode-name">Мини-бар</span>
+              <span class="mode-name" data-i18n="mode.minibar">Мини-бар</span>
               <span class="mode-size">480×48</span>
             </button>
             <button class="mode-btn" type="button" data-mode="pill" aria-pressed="false">
-              <span class="mode-name">Пилюля</span>
+              <span class="mode-name" data-i18n="mode.pill">Пилюля</span>
               <span class="mode-size">196×42</span>
             </button>
           </div>
@@ -239,14 +249,14 @@
 
         <section class="panel" aria-labelledby="blocks-heading">
           <div class="panel-head">
-            <h2 id="blocks-heading" class="panel-title">Блоки</h2>
-            <span class="panel-hint">Порядок сверху вниз</span>
+            <h2 id="blocks-heading" class="panel-title" data-i18n="settings.blocks.title">Блоки</h2>
+            <span class="panel-hint" data-i18n="settings.blocks.hint">Порядок сверху вниз</span>
           </div>
 
           <div id="block-list" class="block-list">
             <article class="block-card" data-block="context_hero">
               <div class="block-head">
-                <h3 class="block-title">Контекст</h3>
+                <h3 class="block-title" data-i18n="block.context">Контекст</h3>
                 <div class="block-actions">
                   <button class="block-move block-up" type="button" data-move="-1" aria-label="Поднять блок «Контекст»">
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"></path><path d="M5 12l7-7 7 7"></path></svg>
@@ -259,23 +269,23 @@
               </div>
               <div class="block-options">
                 <div class="option-row">
-                  <span class="option-label">Недавние чаты</span>
-                  <button class="switch" type="button" role="switch" data-option="show_recent" aria-checked="true" aria-label="Показывать недавние чаты"></button>
+                  <span class="option-label" data-i18n="block.contextRecent">Недавние чаты</span>
+                  <button class="switch" type="button" role="switch" data-option="show_recent" aria-checked="true" aria-label="Показывать недавние чаты" data-i18n-aria="block.toggleRecent"></button>
                 </div>
                 <div class="option-row">
-                  <span class="option-label">Сколько показывать</span>
-                  <input id="recent-count" class="text-input text-input-number" type="number" min="0" max="5" step="1" value="3" aria-label="Количество недавних чатов" />
+                  <span class="option-label" data-i18n="block.contextRecentCount">Сколько показывать</span>
+                  <input id="recent-count" class="text-input text-input-number" type="number" min="0" max="5" step="1" value="3" aria-label="Количество недавних чатов" data-i18n-aria="block.recentCountAria" />
                 </div>
                 <div class="option-row">
-                  <span class="option-label">Пороги контекста</span>
-                  <button class="switch" type="button" role="switch" data-option="show_thresholds" aria-checked="true" aria-label="Показывать пороги контекста"></button>
+                  <span class="option-label" data-i18n="block.contextThresholds">Пороги контекста</span>
+                  <button class="switch" type="button" role="switch" data-option="show_thresholds" aria-checked="true" aria-label="Показывать пороги контекста" data-i18n-aria="block.toggleThresholds"></button>
                 </div>
               </div>
             </article>
 
             <article class="block-card" data-block="quotas_grid">
               <div class="block-head">
-                <h3 class="block-title">Лимиты</h3>
+                <h3 class="block-title" data-i18n="block.quotas">Лимиты</h3>
                 <div class="block-actions">
                   <button class="block-move block-up" type="button" data-move="-1" aria-label="Поднять блок «Лимиты»">
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"></path><path d="M5 12l7-7 7 7"></path></svg>
@@ -289,15 +299,15 @@
               <div class="block-options">
                 <div class="option-row">
                   <span class="option-label">Gemini</span>
-                  <button class="switch" type="button" role="switch" data-option="show_gemini" aria-checked="true" aria-label="Показывать квоты Gemini"></button>
+                  <button class="switch" type="button" role="switch" data-option="show_gemini" aria-checked="true" aria-label="Показывать квоты Gemini" data-i18n-aria="block.toggleGemini"></button>
                 </div>
                 <div class="option-row">
-                  <span class="option-label">Сторонние модели</span>
-                  <button class="switch" type="button" role="switch" data-option="show_3p" aria-checked="true" aria-label="Показывать сторонние модели"></button>
+                  <span class="option-label" data-i18n="block.quotasThirdParty">Сторонние модели</span>
+                  <button class="switch" type="button" role="switch" data-option="show_3p" aria-checked="true" aria-label="Показывать сторонние модели" data-i18n-aria="block.toggleThirdParty"></button>
                 </div>
                 <div class="option-row">
-                  <span class="option-label">Таймер обновления</span>
-                  <button class="switch" type="button" role="switch" data-option="show_countdown" aria-checked="true" aria-label="Показывать таймер обновления"></button>
+                  <span class="option-label" data-i18n="block.quotasCountdown">Таймер обновления</span>
+                  <button class="switch" type="button" role="switch" data-option="show_countdown" aria-checked="true" aria-label="Показывать таймер обновления" data-i18n-aria="block.toggleCountdown"></button>
                 </div>
               </div>
             </article>
@@ -317,8 +327,8 @@
               </div>
               <div class="block-options">
                 <div class="option-row">
-                  <span class="option-label">Полоса баланса</span>
-                  <button class="switch" type="button" role="switch" data-option="show_balance_bar" aria-checked="true" aria-label="Показывать полосу баланса"></button>
+                  <span class="option-label" data-i18n="block.zcodeBalanceBar">Полоса баланса</span>
+                  <button class="switch" type="button" role="switch" data-option="show_balance_bar" aria-checked="true" aria-label="Показывать полосу баланса" data-i18n-aria="block.toggleBalance"></button>
                 </div>
               </div>
             </article>
@@ -326,62 +336,62 @@
         </section>
 
         <section class="panel" aria-labelledby="json-heading">
-          <h2 id="json-heading" class="panel-title">Экспорт / импорт пресета (JSON)</h2>
+          <h2 id="json-heading" class="panel-title" data-i18n="settings.json.title">Экспорт / импорт пресета (JSON)</h2>
           <div class="io-actions">
-            <button id="export-json" class="ghost-btn" type="button">Скопировать JSON</button>
-            <button id="import-apply" class="primary-btn" type="button">Применить</button>
+            <button id="export-json" class="ghost-btn" type="button" data-i18n="settings.json.export">Скопировать JSON</button>
+            <button id="import-apply" class="primary-btn" type="button" data-i18n="settings.json.import">Применить</button>
           </div>
-          <textarea id="import-json" class="json-area" rows="5" spellcheck="false" aria-label="JSON пресета" aria-describedby="json-status" placeholder='{"schema_version":1,"theme":"paper"}'></textarea>
+          <textarea id="import-json" class="json-area" rows="5" spellcheck="false" aria-label="JSON пресета" aria-describedby="json-status" placeholder='{"schema_version":1,"theme":"paper"}' data-i18n-aria="settings.json.aria"></textarea>
           <p id="json-status" class="json-status" role="status"></p>
         </section>
       </section>
 
       <section id="panel-sync" class="tabpanel hidden" role="tabpanel" aria-labelledby="tab-sync">
         <section class="panel" aria-labelledby="sync-channel-heading">
-          <h2 id="sync-channel-heading" class="panel-title">Канал</h2>
+          <h2 id="sync-channel-heading" class="panel-title" data-i18n="settings.sync.channelTitle">Канал</h2>
 
           <div class="sync-row">
-            <label class="field-label" for="sync-ntfy-toggle">Синхронизация с телефоном (ntfy)</label>
+            <label class="field-label" for="sync-ntfy-toggle" data-i18n="settings.sync.ntfyToggle">Синхронизация с телефоном (ntfy)</label>
             <input type="checkbox" id="sync-ntfy-toggle" class="switch" />
           </div>
 
           <div class="sync-field">
-            <label class="field-label" for="sync-server-input">Сервер ntfy</label>
+            <label class="field-label" for="sync-server-input" data-i18n="settings.sync.serverLabel">Сервер ntfy</label>
             <div class="sync-inline">
               <input id="sync-server-input" class="text-input" type="url" inputmode="url" placeholder="https://ntfy.sh" spellcheck="false" autocomplete="off" />
-              <button id="sync-server-save" class="ghost-btn" type="button">Сохранить</button>
+              <button id="sync-server-save" class="ghost-btn" type="button" data-i18n="settings.sync.save">Сохранить</button>
             </div>
             <p id="sync-server-error" class="field-error hidden" role="alert"></p>
-            <p class="panel-hint">Допускается только адрес, начинающийся с <code>https://</code>, без символов <code>@</code>, <code>?</code> и <code>#</code>.</p>
+            <p class="panel-hint" data-i18n="settings.sync.serverHint">Допускается только адрес, начинающийся с <code>https://</code>, без символов <code>@</code>, <code>?</code> и <code>#</code>.</p>
           </div>
         </section>
 
         <section class="panel" aria-labelledby="sync-e2e-heading">
-          <h2 id="sync-e2e-heading" class="panel-title">Шифрование</h2>
+          <h2 id="sync-e2e-heading" class="panel-title" data-i18n="settings.e2e.title">Шифрование</h2>
 
           <div class="sync-row">
-            <label class="field-label" for="sync-e2e-toggle">E2E-шифрование (AES-256-GCM)</label>
+            <label class="field-label" for="sync-e2e-toggle" data-i18n="settings.e2e.toggle">E2E-шифрование (AES-256-GCM)</label>
             <input type="checkbox" id="sync-e2e-toggle" class="switch" />
           </div>
 
-          <button id="sync-e2e-rotate" class="ghost-btn sync-rotate" type="button">Сменить ключ</button>
-          <p id="sync-e2e-hint" class="panel-hint">Ключ хранится на этом устройстве и передаётся телефону только через QR-код.</p>
+          <button id="sync-e2e-rotate" class="ghost-btn sync-rotate" type="button" data-i18n="settings.e2e.rotate">Сменить ключ</button>
+          <p id="sync-e2e-hint" class="panel-hint" data-i18n="settings.e2e.hintShort">Ключ хранится на этом устройстве и передаётся телефону только через QR-код.</p>
         </section>
 
         <section class="panel" aria-labelledby="sync-qr-heading">
-          <h2 id="sync-qr-heading" class="panel-title">Подключить Android (QR-код)</h2>
-          <p class="panel-hint">Откройте AG Widgets на телефоне и отсканируйте код.</p>
+          <h2 id="sync-qr-heading" class="panel-title" data-i18n="settings.qr.title">Подключить Android (QR-код)</h2>
+          <p class="panel-hint" data-i18n="settings.qr.hint">Откройте AG Widgets на телефоне и отсканируйте код.</p>
 
-          <button id="sync-qr-reveal" class="ghost-btn" type="button">Показать QR-код</button>
+          <button id="sync-qr-reveal" class="ghost-btn" type="button" data-i18n="settings.qr.reveal">Показать QR-код</button>
 
           <div id="sync-qr-wrap" class="qr-wrap hidden" hidden>
             <div id="sync-qr-svg" class="qr-frame"></div>
-            <span id="sync-qr-badge" class="qr-badge">Без E2E</span>
+            <span id="sync-qr-badge" class="qr-badge" data-i18n="settings.qr.badgeOff">Без E2E</span>
             <code id="sync-uri" class="mono"></code>
             <div class="qr-actions">
-              <button id="sync-copy-uri" class="ghost-btn" type="button">Скопировать ссылку сопряжения</button>
-              <button id="sync-copy-topic" class="ghost-btn" type="button">Скопировать тему</button>
-              <button id="sync-qr-hide" class="ghost-btn" type="button">Скрыть QR-код</button>
+              <button id="sync-copy-uri" class="ghost-btn" type="button" data-i18n="settings.qr.copyUri">Скопировать ссылку сопряжения</button>
+              <button id="sync-copy-topic" class="ghost-btn" type="button" data-i18n="settings.qr.copyTopic">Скопировать тему</button>
+              <button id="sync-qr-hide" class="ghost-btn" type="button" data-i18n="settings.qr.hide">Скрыть QR-код</button>
             </div>
           </div>
 
@@ -391,8 +401,8 @@
     </main>
 
     <footer class="settings-footer">
-      <p class="footer-note">Изменения применяются сразу</p>
-      <button id="reset-appearance" class="reset-btn" type="button">Сбросить всё</button>
+      <p class="footer-note" data-i18n="settings.footer.note">Изменения применяются сразу</p>
+      <button id="reset-appearance" class="reset-btn" type="button" data-i18n="settings.footer.reset">Сбросить всё</button>
       <p id="settings-error" class="settings-error hidden" role="alert"></p>
     </footer>
   </div>

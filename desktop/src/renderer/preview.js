@@ -389,8 +389,20 @@
       systemDark: preset.systemDark,
       alwaysOnTop: true,
       openAtLogin: false,
+      language: 'auto',
     };
     const appearanceListeners = new Set();
+
+    /** Mock bridge messages follow the preview language mode. */
+    function tr(key) {
+      const i18n = AGW.i18n;
+      if (!i18n || typeof i18n.t !== 'function') return key;
+      const locale = typeof navigator !== 'undefined' ? navigator.language : '';
+      const language = settings.language === 'ru' || settings.language === 'en'
+        ? settings.language
+        : i18n.resolveLanguage('auto', locale);
+      return i18n.t(key, null, language);
+    }
 
     function resolveEffective() {
       if (appearance.theme === 'classic') {
@@ -406,12 +418,21 @@
     }
 
     function snapshot() {
+      const i18n = AGW.i18n;
+      const language = settings.language === 'ru' || settings.language === 'en'
+        ? settings.language
+        : 'auto';
+      const resolvedLanguage = i18n && typeof i18n.resolveLanguage === 'function'
+        ? i18n.resolveLanguage(language, typeof navigator !== 'undefined' ? navigator.language : '')
+        : 'ru';
       return {
         appearance: { ...appearance },
         effectiveTheme: resolveEffective(),
         systemDark: settings.systemDark,
         alwaysOnTop: settings.alwaysOnTop,
         openAtLogin: settings.openAtLogin,
+        language,
+        resolvedLanguage,
       };
     }
 
@@ -474,6 +495,12 @@
       if (opacity !== null) appearance.opacity = opacity;
       if (typeof next.alwaysOnTop === 'boolean') settings.alwaysOnTop = next.alwaysOnTop;
       if (typeof next.openAtLogin === 'boolean') settings.openAtLogin = next.openAtLogin;
+      if (typeof next.language === 'string') {
+        const language = next.language.trim().toLowerCase();
+        if (language === 'auto' || language === 'ru' || language === 'en') {
+          settings.language = language;
+        }
+      }
       return Promise.resolve(emit());
     }
 
@@ -495,7 +522,9 @@
     function applyPreset(presetId) {
       const key = typeof presetId === 'string' ? presetId.trim().toLowerCase() : '';
       const preset = PRESETS[key];
-      if (!preset) return Promise.resolve({ ok: false, error: 'Неизвестный пресет' });
+      if (!preset) {
+        return Promise.resolve({ ok: false, error: tr('settings.errors.presetFailed') });
+      }
       Object.assign(appearance, cloneJson(preset));
       return Promise.resolve(emit());
     }
@@ -512,7 +541,7 @@
         Object.assign(appearance, parsed);
         return Promise.resolve({ ok: true, snapshot: emit() });
       } catch {
-        return Promise.resolve({ ok: false, error: 'Некорректный JSON' });
+        return Promise.resolve({ ok: false, error: tr('settings.errors.invalidJson') });
       }
     }
 

@@ -20,19 +20,19 @@
       <div class="titlebar-actions">
         <span id="live-dot" class="live-dot" aria-hidden="true"></span>
         <span id="updated-time" class="muted-mini">—</span>
-        <button id="refresh-btn" class="icon-btn refresh-btn" type="button" title="Обновить данные (F5)" aria-label="Обновить данные">
+        <button id="refresh-btn" class="icon-btn refresh-btn" type="button" title="Обновить данные (F5)" aria-label="Обновить данные" data-i18n-title="titlebar.refreshTooltip" data-i18n-aria="titlebar.refresh">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
             <path d="M21 3v6h-6"></path>
           </svg>
         </button>
-        <button id="settings-btn" class="icon-btn settings-btn" type="button" title="Настройки" aria-label="Настройки">
+        <button id="settings-btn" class="icon-btn settings-btn" type="button" title="Настройки" aria-label="Настройки" data-i18n-title="titlebar.settings" data-i18n-aria="titlebar.settings">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <circle cx="12" cy="12" r="3"></circle>
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
           </svg>
         </button>
-        <button id="theme-btn" class="icon-btn theme-btn" type="button" title="Сменить тему" aria-label="Сменить тему">
+        <button id="theme-btn" class="icon-btn theme-btn" type="button" title="Сменить тему" aria-label="Сменить тему" data-i18n-title="titlebar.theme" data-i18n-aria="titlebar.theme">
           <svg class="icon-sun" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <circle cx="12" cy="12" r="4"></circle>
             <path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>
@@ -41,7 +41,7 @@
             <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
           </svg>
         </button>
-        <button id="menu-btn" class="icon-btn" type="button" title="Меню: свернуть, поверх окон, выход" aria-label="Меню">
+        <button id="menu-btn" class="icon-btn" type="button" title="Меню: свернуть, поверх окон, выход" aria-label="Меню" data-i18n-title="titlebar.menuTooltip" data-i18n-aria="titlebar.menu">
           <svg class="icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <circle cx="5" cy="12" r="1.25"></circle>
             <circle cx="12" cy="12" r="1.25"></circle>
@@ -49,13 +49,13 @@
           </svg>
           <span class="icon-glyph" aria-hidden="true">⋯</span>
         </button>
-        <button id="min-btn" class="icon-btn" type="button" title="Свернуть в панель задач" aria-label="Свернуть в панель задач">
+        <button id="min-btn" class="icon-btn" type="button" title="Свернуть в панель задач" aria-label="Свернуть в панель задач" data-i18n-title="titlebar.minimize" data-i18n-aria="titlebar.minimize">
           <svg class="icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M5 12h14"></path>
           </svg>
           <span class="icon-glyph" aria-hidden="true">−</span>
         </button>
-        <button id="quit-btn" class="icon-btn quit" type="button" title="Закрыть AG Widgets" aria-label="Закрыть AG Widgets">
+        <button id="quit-btn" class="icon-btn quit" type="button" title="Закрыть AG Widgets" aria-label="Закрыть AG Widgets" data-i18n-title="titlebar.quit" data-i18n-aria="titlebar.quit">
           <svg class="icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M6 6l12 12M18 6L6 18"></path>
           </svg>
@@ -69,14 +69,14 @@
       <section class="card context-card" id="context-card" data-block="context_hero" aria-live="polite">
         <div class="card-topline">
           <span class="serial">01 / CONTEXT</span>
-          <span class="card-heading">Контекст</span>
+          <span class="card-heading" data-i18n="dashboard.context.heading">Контекст</span>
           <span id="ctx-level-pill" class="status-pill level-idle">—</span>
-          <span class="material" id="ctx-material">Нет сессии</span>
+          <span class="material" id="ctx-material" data-i18n="dashboard.empty.noSession">Нет сессии</span>
         </div>
 
         <div class="context-main">
           <div class="orbital-gauge">
-            <svg class="gauge-svg" viewBox="0 0 140 140" role="img" aria-label="Заполнение контекста">
+            <svg class="gauge-svg" viewBox="0 0 140 140" role="img" aria-label="Заполнение контекста" data-i18n-aria="dashboard.context.gaugeAria">
               <defs>
                 <radialGradient id="gaugeHalo" cx="50%" cy="50%" r="50%">
                   <stop offset="0%" style="stop-color: var(--gauge-halo)" stop-opacity="0.16" />
@@ -94,17 +94,17 @@
             </svg>
             <div class="gauge-center">
               <span id="ctx-tokens" class="tokens-big">—</span>
-              <span id="ctx-token-sub" class="tokens-sub">токены</span>
+              <span id="ctx-token-sub" class="tokens-sub" data-i18n="dashboard.context.tokensUnit">токены</span>
             </div>
           </div>
 
           <div class="context-meta">
             <div class="meta-top">
-              <span id="ctx-model" class="model-name">Ожидание диалога</span>
+              <span id="ctx-model" class="model-name" data-i18n="dashboard.context.waitingDialog">Ожидание диалога</span>
             </div>
-            <div id="ctx-workspace" class="meta-ws"><span class="ws-prefix">Проект: </span><span id="ctx-workspace-name">—</span></div>
-            <div id="ctx-snippet" class="meta-snippet">Отправь запрос в Antigravity</div>
-            <div id="ctx-alert" class="ctx-alert hidden">Пора /compact</div>
+            <div id="ctx-workspace" class="meta-ws"><span class="ws-prefix" data-i18n="dashboard.context.projectPrefix">Проект: </span><span id="ctx-workspace-name">—</span></div>
+            <div id="ctx-snippet" class="meta-snippet" data-i18n="dashboard.context.snippetIdle">Отправь запрос в Antigravity</div>
+            <div id="ctx-alert" class="ctx-alert hidden" data-i18n="dashboard.context.compactAlert">Пора /compact</div>
           </div>
         </div>
 
@@ -113,13 +113,13 @@
             <div class="zone-marker" id="zone-marker"></div>
           </div>
           <div class="zone-legend">
-            <span id="zone-warn-label">надёжно до —</span>
-            <span id="zone-risk-label">риск после —</span>
+            <span id="zone-warn-label" data-i18n="dashboard.zones.safeUntilUnknown">надёжно до —</span>
+            <span id="zone-risk-label" data-i18n="dashboard.zones.riskAfterUnknown">риск после —</span>
           </div>
           <div class="zone-zones" aria-hidden="true">
-            <span class="legend"><i class="legend-dot ok"></i><span id="zone-legend-ok">0–40%</span></span>
-            <span class="legend"><i class="legend-dot warn"></i><span id="zone-legend-warn">40–65%</span></span>
-            <span class="legend"><i class="legend-dot risk"></i><span id="zone-legend-risk">65%+</span></span>
+            <span class="legend"><i class="legend-dot ok"></i><span id="zone-legend-ok" data-i18n="dashboard.zones.safe">0–40%</span></span>
+            <span class="legend"><i class="legend-dot warn"></i><span id="zone-legend-warn" data-i18n="dashboard.zones.warn">40–65%</span></span>
+            <span class="legend"><i class="legend-dot risk"></i><span id="zone-legend-risk" data-i18n="dashboard.zones.risk">65%+</span></span>
           </div>
         </div>
 
@@ -130,12 +130,12 @@
       <section class="card quota-card" data-block="quotas_grid" aria-live="polite">
         <div class="card-topline">
           <span class="serial">02 / LIMITS</span>
-          <span class="card-heading">Лимиты · остаток</span>
+          <span class="card-heading" data-i18n="dashboard.quotas.heading">Лимиты · остаток</span>
           <span id="quota-extra" class="quota-extra hidden"></span>
           <span id="plan-tier" class="tier-badge">—</span>
         </div>
         <div id="quota-list" class="quota-list">
-          <div class="empty-msg">Квоты появятся после первого /usage</div>
+          <div class="empty-msg" data-i18n="dashboard.quotas.empty">Квоты появятся после первого /usage</div>
         </div>
         <div id="quota-error" class="quota-error hidden"></div>
       </section>
@@ -145,42 +145,42 @@
         <div class="card-topline">
           <span class="serial">03 / ACCESS</span>
           <span class="card-heading">ZCode</span>
-          <span class="material" id="zcode-material">Отключён</span>
+          <span class="material" id="zcode-material" data-i18n="dashboard.zcode.materialDisabled">Отключён</span>
         </div>
         <div class="zcode-row">
           <div class="zcode-info">
             <div id="zcode-title" class="zcode-title">ZCode</div>
-            <div id="zcode-sub" class="zcode-sub">Ожидание проверки</div>
+            <div id="zcode-sub" class="zcode-sub" data-i18n="dashboard.zcode.waitingCheck">Ожидание проверки</div>
             <div id="zcode-bar" class="zcode-bar hidden"><div id="zcode-bar-fill" class="zcode-bar-fill"></div></div>
           </div>
-          <div id="zcode-chip" class="zcode-chip chip-idle">Нет данных</div>
-          <button id="zcode-retry" class="zcode-retry hidden" type="button" title="Проверить ZCode ещё раз">
+          <div id="zcode-chip" class="zcode-chip chip-idle" data-i18n="dashboard.zcode.noData">Нет данных</div>
+          <button id="zcode-retry" class="zcode-retry hidden" type="button" title="Проверить ZCode ещё раз" data-i18n-title="dashboard.zcode.retryTooltip">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
               <path d="M21 3v6h-6"></path>
             </svg>
-            Повторить
+            <span data-i18n="dashboard.zcode.retry">Повторить</span>
           </button>
         </div>
         <div class="zcode-actions hidden" id="zcode-actions">
-          <button id="zcode-login" class="zcode-action" type="button">Войти в Z.ai</button>
+          <button id="zcode-login" class="zcode-action" type="button" data-i18n="dashboard.zcode.login">Войти в Z.ai</button>
         </div>
       </section>
     </main>
 
-    <div id="compact-strip" class="compact-strip hidden" role="group" aria-label="Краткая сводка">
+    <div id="compact-strip" class="compact-strip hidden" role="group" aria-label="Краткая сводка" data-i18n-aria="dashboard.strip.aria">
       <span id="strip-level-dot" class="strip-dot" aria-hidden="true"></span>
       <span id="strip-ctx" class="strip-text">—</span>
       <span id="strip-quota" class="strip-text strip-quota">—</span>
       <span id="strip-zcode" class="strip-text strip-zcode">—</span>
-      <button id="strip-refresh-btn" class="icon-btn strip-btn" type="button" title="Обновить данные" aria-label="Обновить данные">
+      <button id="strip-refresh-btn" class="icon-btn strip-btn" type="button" title="Обновить данные" aria-label="Обновить данные" data-i18n-title="dashboard.strip.refresh" data-i18n-aria="dashboard.strip.refresh">
         <svg class="icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
           <path d="M21 3v6h-6"></path>
         </svg>
         <span class="icon-glyph" aria-hidden="true">⟳</span>
       </button>
-      <button id="strip-settings-btn" class="icon-btn strip-btn" type="button" title="Настройки" aria-label="Настройки">
+      <button id="strip-settings-btn" class="icon-btn strip-btn" type="button" title="Настройки" aria-label="Настройки" data-i18n-title="dashboard.strip.settings" data-i18n-aria="dashboard.strip.settings">
         <svg class="icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <circle cx="12" cy="12" r="3"></circle>
           <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
@@ -191,13 +191,14 @@
 
     <footer class="widget-footer" aria-hidden="true">
       <span class="footer-brand">AGW<span>/01</span></span>
-      <span class="legend"><i class="legend-dot ok"></i><span id="legend-ok">&lt;40%</span></span>
-      <span class="legend"><i class="legend-dot warn"></i><span id="legend-warn">40–65%</span></span>
-      <span class="legend"><i class="legend-dot risk"></i><span id="legend-risk">&gt;65%</span></span>
+      <span class="legend"><i class="legend-dot ok"></i><span id="legend-ok" data-i18n="dashboard.footer.legendOk">&lt;40%</span></span>
+      <span class="legend"><i class="legend-dot warn"></i><span id="legend-warn" data-i18n="dashboard.footer.legendWarn">40–65%</span></span>
+      <span class="legend"><i class="legend-dot risk"></i><span id="legend-risk" data-i18n="dashboard.footer.legendRisk">&gt;65%</span></span>
       <span class="footer-note">CONTEXT HEALTH</span>
     </footer>
   </div>
 
+  <script src="src/shared/i18n.js"></script>
   <script src="src/renderer/format.js"></script>
   <script src="src/renderer/theme-math.js"></script>
   <script src="src/renderer/context.js"></script>

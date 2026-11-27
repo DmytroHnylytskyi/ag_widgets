@@ -78,6 +78,8 @@ import dev.agwidgets.ui.components.InstalledWidgetInfo
 import dev.agwidgets.ui.components.SurfaceCard
 import dev.agwidgets.ui.components.ZCodeDashboardCard
 import dev.agwidgets.ui.components.glassFieldColors
+import dev.agwidgets.ui.i18n.AgStrings
+import dev.agwidgets.ui.i18n.LocalStrings
 import dev.agwidgets.ui.theme.AgDim
 import dev.agwidgets.ui.theme.AgTheme
 import dev.agwidgets.ui.theme.AgType
@@ -123,11 +125,18 @@ internal object OAuthSessionHolder {
 
     fun start(context: Context, onToken: (String) -> Unit) {
         val appContext = context.applicationContext
+        val strings = StatusStore.resolveStrings(appContext)
         job?.cancel()
-        _state.value = OAuthUiState.Waiting("Открываю вход Z.ai в браузере…")
+        _state.value = OAuthUiState.Waiting(strings.dashOAuthOpening)
         job = scope.launch {
-            val flow = ZCodeClient.startOAuthFlow("zai").getOrElse { error ->
-                fail(appContext, "Ошибка OAuth: ${error.message ?: "неизвестная ошибка"}")
+            val flow = ZCodeClient.startOAuthFlow("zai", strings).getOrElse { error ->
+                fail(
+                    appContext,
+                    strings.fill(
+                        strings.dashOAuthError,
+                        "error" to (error.message ?: strings.commonUnknownError),
+                    ),
+                )
                 return@launch
             }
             val launch = runCatching {
@@ -138,14 +147,14 @@ internal object OAuthSessionHolder {
             }
             if (launch.isFailure) {
                 // A missing/broken browser must not leave a poll job running.
-                fail(appContext, "Не удалось открыть браузер")
+                fail(appContext, strings.dashOAuthOpenBrowserFailed)
                 return@launch
             }
-            _state.value = OAuthUiState.Waiting("Завершите вход в браузере и вернитесь сюда…")
+            _state.value = OAuthUiState.Waiting(strings.dashOAuthFinishInBrowser)
             val deadline = System.currentTimeMillis() + 300_000L
             while (System.currentTimeMillis() < deadline) {
                 delay(flow.pollIntervalSec * 1000L)
-                when (val poll = ZCodeClient.pollOAuthFlow(flow)) {
+                when (val poll = ZCodeClient.pollOAuthFlow(flow, strings)) {
                     is ZCodeOAuthPollResult.Pending -> Unit
                     is ZCodeOAuthPollResult.Failed -> {
                         fail(appContext, poll.reason)
@@ -157,17 +166,23 @@ internal object OAuthSessionHolder {
                         val deviceMid = ZCodeStore.getOrCreateDeviceMid(appContext)
                         val seq = ZCodeStore.nextSeq(appContext)
                         val previous = ZCodeStore.getDirect(appContext)
-                        ZCodeClient.fetchStatus(poll.token, deviceMid, seq, previous).onSuccess { fetched ->
+                        ZCodeClient.fetchStatus(
+                            poll.token,
+                            deviceMid,
+                            seq,
+                            previous,
+                            strings = strings,
+                        ).onSuccess { fetched ->
                             ZCodeStore.saveDirect(appContext, fetched)
                         }
                         runCatching { LimitsWidget().updateAll(appContext) }
                         runCatching { onToken(poll.token) }
-                        _state.value = OAuthUiState.Ready("Вход выполнен. Автономный мониторинг включён.")
+                        _state.value = OAuthUiState.Ready(strings.dashOAuthDone)
                         return@launch
                     }
                 }
             }
-            fail(appContext, "Таймаут входа — попробуйте снова")
+            fail(appContext, strings.dashOAuthTimeout)
         }
     }
 
@@ -199,12 +214,15 @@ internal object OAuthSessionHolder {
 internal fun AgWidgetsScreen(
     themeMode: String,
     onSelectTheme: (String) -> Unit,
+    language: String,
+    onSelectLanguage: (String) -> Unit,
     pendingPairingUri: String? = null,
     onConsumePairingUri: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val colors = AgTheme.colors
+    val s = LocalStrings.current
 
     var topic by remember { mutableStateOf(StatusStore.getTopic(context)) }
     var ntfyServer by remember { mutableStateOf(StatusStore.getNtfyServer(context)) }
@@ -246,7 +264,7 @@ internal fun AgWidgetsScreen(
                 is QrScanResult.Success -> pairingRequest = result.rawValue
                 QrScanResult.Cancelled -> Unit
                 is QrScanResult.Unavailable -> {
-                    statusMessage = "Сканер QR недоступен — вставьте ссылку сопряжения вручную"
+                    statusMessage = s.dashScannerUnavailable
                     showPasteDialog = true
                 }
             }
@@ -344,7 +362,7 @@ internal fun AgWidgetsScreen(
         }
         syncPeriodicSchedule()
         isRefreshing = true
-        statusMessage = "Обновление..."
+        statusMessage = s.dashRefreshing
         scope.launch {
             val messages = mutableListOf<String>()
 
@@ -353,6 +371,7 @@ internal fun AgWidgetsScreen(
                     topic,
                     serverUrl = StatusStore.getNtfyServer(context),
                     e2eKey = StatusStore.getE2eKey(context),
+                    strings = s,
                 ).fold(
                     onSuccess = { jsonText ->
                         val parsed = AgStatus.fromJson(jsonText)
@@ -362,15 +381,17 @@ internal fun AgWidgetsScreen(
                                 ResetAlertWorker.scheduleForBuckets(context, current.buckets)
                                 Notifier.checkAndNotify(context, previous, current)
                             }
-                            messages.add("ntfy OK")
+                            messages.add(s.dashNtfyOk)
                         } else {
-                            messages.add("ntfy: неверный JSON")
-                            StatusStore.saveError(context, "ntfy: неверный JSON")
+                            messages.add(s.dashNtfyBadJson)
+                            StatusStore.saveError(context, s.dashNtfyBadJson)
                         }
                     },
                     onFailure = { error ->
-                        messages.add("ntfy: ${error.message}")
-                        StatusStore.saveError(context, "ntfy: ${error.message ?: "ошибка сети"}")
+                        val detail = error.message ?: s.commonNetworkError
+                        val message = s.fill(s.dashNtfyError, "error" to detail)
+                        messages.add(message)
+                        StatusStore.saveError(context, message)
                     },
                 )
             }
@@ -381,7 +402,13 @@ internal fun AgWidgetsScreen(
                 val deviceMid = ZCodeStore.getOrCreateDeviceMid(context)
                 val seq = ZCodeStore.nextSeq(context)
                 val previousZCode = ZCodeStore.getDirect(context)
-                ZCodeClient.fetchStatus(token, deviceMid, seq, previousZCode).fold(
+                ZCodeClient.fetchStatus(
+                    token,
+                    deviceMid,
+                    seq,
+                    previousZCode,
+                    strings = s,
+                ).fold(
                     onSuccess = { zcode ->
                         val (previous, current) = ZCodeStore.saveDirect(context, zcode)
                         Notifier.checkZCodeCouponTransition(context, previous, current)
@@ -390,35 +417,42 @@ internal fun AgWidgetsScreen(
                             (remaining > 0 || (zcode.totalUnits != null && zcode.totalUnits > 0))
                         zcodeMessage = when {
                             zcode.isCouponUnknown -> when (zcode.errorKind) {
-                                "auth_expired" -> "Токен истёк — войдите снова"
-                                "network" -> "Нет связи с zcode.z.ai"
-                                "rate_limited" -> "Слишком много запросов ZCode — попробуйте позже"
-                                "server_error" -> "Ошибка сервера ZCode"
-                                "api_changed" -> "Схема API ZCode изменилась"
-                                "parse_failed" -> "Не удалось разобрать ответ ZCode"
-                                else -> "Состояние ваучера неизвестно"
+                                "auth_expired" -> s.dashZcodeTokenExpired
+                                "network" -> s.dashZcodeNoConnection
+                                "rate_limited" -> s.dashZcodeRateLimited
+                                "server_error" -> s.dashZcodeServerError
+                                "api_changed" -> s.dashZcodeApiChanged
+                                "parse_failed" -> s.dashZcodeParseFailed
+                                else -> s.dashZcodeUnknown
                             }
-                            zcode.isCouponVisible -> "Ваучер доступен! (${zcode.matched})"
-                            zcode.authOk == false -> "Токен истёк — войдите снова"
-                            hasBalance -> "Остаток: ${formatUnits(remaining)}"
-                            else -> "ZCode OK · ваучеров пока нет"
+                            zcode.isCouponVisible ->
+                                s.fill(s.dashZcodeCouponAvailable, "matched" to zcode.matched)
+                            zcode.authOk == false -> s.dashZcodeTokenExpired
+                            hasBalance ->
+                                s.fill(s.dashZcodeRemaining, "amount" to formatUnits(remaining))
+                            else -> s.dashZcodeOkNoCoupons
                         }
                         if (zcode.networkError || zcode.errorKind != null) {
-                            messages.add("ZCode: $zcodeMessage")
-                            StatusStore.saveError(context, "ZCode: $zcodeMessage")
+                            val message = s.fill(s.dashZcodePrefix, "message" to zcodeMessage)
+                            messages.add(message)
+                            StatusStore.saveError(context, message)
                         } else {
-                            messages.add("ZCode OK")
+                            messages.add(s.dashZcodeOk)
                         }
                     },
                     onFailure = { error ->
-                        messages.add("ZCode: ${error.message}")
-                        StatusStore.saveError(context, "ZCode: ${error.message ?: "ошибка сети"}")
+                        val message = s.fill(
+                            s.dashZcodePrefix,
+                            "message" to (error.message ?: s.commonNetworkError),
+                        )
+                        messages.add(message)
+                        StatusStore.saveError(context, message)
                     },
                 )
             }
 
             if (rateLimited) {
-                messages.add("ZCode: лимит запросов (429) — подождите")
+                messages.add(s.dashZcodeRateLimitBackoff)
             }
             lastStatus = StatusStore.getMergedStatus(context)
             lastError = StatusStore.getLastError(context)
@@ -426,8 +460,8 @@ internal fun AgWidgetsScreen(
             LimitsWidget().updateAll(context)
             statusMessage = when {
                 messages.isNotEmpty() -> messages.joinToString(" · ")
-                BuildConfig.ZCODE_ENABLED && mode == StatusStore.MODE_ZCODE -> "Войдите в Z.ai"
-                else -> "Укажите тему ntfy"
+                BuildConfig.ZCODE_ENABLED && mode == StatusStore.MODE_ZCODE -> s.dashSignInPrompt
+                else -> s.dashSetNtfyTopic
             }
             isRefreshing = false
         }
@@ -447,7 +481,7 @@ internal fun AgWidgetsScreen(
         zcodeToken = ""
         ZCodeStore.clearToken(context)
         syncPeriodicSchedule()
-        zcodeMessage = "Токен удалён"
+        zcodeMessage = s.dashTokenRemoved
         lastStatus = StatusStore.getMergedStatus(context)
         nowMs = System.currentTimeMillis()
         scope.launch { LimitsWidget().updateAll(context) }
@@ -458,7 +492,7 @@ internal fun AgWidgetsScreen(
         if (manager.isRequestPinAppWidgetSupported) {
             manager.requestPinAppWidget(ComponentName(context, LimitsWidgetReceiver::class.java), null, null)
         } else {
-            statusMessage = "Лаунчер не поддерживает автодобавление — добавьте виджет вручную"
+            statusMessage = s.dashPinUnsupported
         }
     }
 
@@ -473,8 +507,8 @@ internal fun AgWidgetsScreen(
                     val config = WidgetConfigStore.get(context, appWidgetId)
                     InstalledWidgetInfo(
                         appWidgetId = appWidgetId,
-                        presetLabel = widgetPresetLabel(config),
-                        themeLabel = widgetThemeLabel(config.theme),
+                        presetLabel = widgetPresetLabel(config, s),
+                        themeLabel = widgetThemeLabel(config.theme, s),
                     )
                 }
         }.getOrDefault(emptyList())
@@ -630,7 +664,7 @@ internal fun AgWidgetsScreen(
                     if (!showSettings) {
                         if (notificationsDenied) {
                             Text(
-                                text = "Уведомления отключены — напоминания о сбросе квоты не придут",
+                                text = s.dashNotificationsDisabled,
                                 style = if (colors.isClassic) {
                                     AgType.caption.copy(fontFamily = FontFamily.Monospace)
                                 } else {
@@ -660,6 +694,8 @@ internal fun AgWidgetsScreen(
                         SettingsScreen(
                             themeMode = themeMode,
                             onSelectTheme = onSelectTheme,
+                            language = language,
+                            onSelectLanguage = onSelectLanguage,
                         ) {
                             if (mode != StatusStore.MODE_ZCODE) {
                                 ChannelCard(
@@ -674,7 +710,7 @@ internal fun AgWidgetsScreen(
                                         val prevServer = StatusStore.getNtfyServer(context)
                                         val serverToSave = ntfyServer.trim().ifEmpty { E2eCrypto.DEFAULT_NTFY_SERVER }
                                         if (!StatusStore.setNtfyServer(context, serverToSave)) {
-                                            statusMessage = "Сервер должен начинаться с https://"
+                                            statusMessage = s.dashServerHttpsRequired
                                         } else {
                                             val nextServer = StatusStore.getNtfyServer(context)
                                             ntfyServer = nextServer
@@ -694,7 +730,7 @@ internal fun AgWidgetsScreen(
                                             lastError = StatusStore.getLastError(context)
                                             nowMs = System.currentTimeMillis()
                                             statusMessage =
-                                                if (nextTopic.isEmpty()) "Тема очищена" else "Тема сохранена"
+                                                if (nextTopic.isEmpty()) s.dashTopicCleared else s.dashTopicSaved
                                             scope.launch { runCatching { LimitsWidget().updateAll(context) } }
                                         }
                                     },
@@ -705,7 +741,7 @@ internal fun AgWidgetsScreen(
                                         StatusStore.setE2eKey(context, null)
                                         hasE2eKey = false
                                         ResetAlertWorker.cancelAllResetAlerts(context)
-                                        statusMessage = "E2E-ключ сброшен"
+                                        statusMessage = s.dashE2eKeyReset
                                         scope.launch { runCatching { LimitsWidget().updateAll(context) } }
                                     },
                                 )
@@ -722,7 +758,7 @@ internal fun AgWidgetsScreen(
                                     onSaveToken = {
                                         ZCodeStore.setToken(context, zcodeToken)
                                         syncPeriodicSchedule()
-                                        zcodeMessage = if (zcodeToken.isBlank()) "Токен пуст" else "Токен сохранён"
+                                        zcodeMessage = if (zcodeToken.isBlank()) s.dashTokenEmpty else s.dashTokenSaved
                                         lastStatus = StatusStore.getMergedStatus(context)
                                     },
                                     onClearToken = { logout() },
@@ -759,16 +795,13 @@ internal fun AgWidgetsScreen(
                     }
 
                     val footerCopy = when {
-                        mode == StatusStore.MODE_ZCODE ->
-                            "Токен ZCode хранится только на телефоне"
-                        BuildConfig.ZCODE_ENABLED ->
-                            "В ntfy уходят числа квот, токенов, ID диалога и флаг ваучера"
-                        else ->
-                            "В ntfy уходят числа квот, токенов и ID диалога"
+                        mode == StatusStore.MODE_ZCODE -> s.dashFooterZcodeOnly
+                        BuildConfig.ZCODE_ENABLED -> s.dashFooterFull
+                        else -> s.dashFooterContext
                     }
                     Text(
                         text = if (colors.isClassic) {
-                            "AGW / 01 · ${footerCopy.uppercase()}"
+                            s.fill(s.dashFooterClassicPattern, "text" to footerCopy.uppercase())
                         } else {
                             footerCopy
                         },
@@ -807,14 +840,14 @@ internal fun AgWidgetsScreen(
                         ntfyServer = StatusStore.getNtfyServer(context)
                         hasE2eKey = StatusStore.hasE2eKey(context)
                         syncPeriodicSchedule()
-                        statusMessage = "Сопряжение выполнено"
+                        statusMessage = s.dashPairingDone
                         lastStatus = StatusStore.getMergedStatus(context)
                         lastError = StatusStore.getLastError(context)
                         nowMs = System.currentTimeMillis()
                         dismissPairing()
                         refresh()
                     } else {
-                        statusMessage = "Не удалось применить код сопряжения"
+                        statusMessage = s.dashPairingApplyFailed
                         dismissPairing()
                     }
                 },
@@ -825,7 +858,7 @@ internal fun AgWidgetsScreen(
 
 /**
  * Manual entry for an `agw://pair` link: used when the phone has no Play
- * Services scanner, and by "Вставить код сопряжения" in the settings card.
+ * Services scanner, and by the "paste pairing code" action in the settings card.
  *
  * The raw text is only trimmed and forwarded; parsing happens in
  * [PairingConfirmDialog] so a typo is reported there, not here.
@@ -836,6 +869,7 @@ private fun PairingPasteDialog(
     onConfirm: (String) -> Unit,
 ) {
     val colors = AgTheme.colors
+    val s = LocalStrings.current
     var text by remember { mutableStateOf("") }
 
     AlertDialog(
@@ -844,14 +878,14 @@ private fun PairingPasteDialog(
         containerColor = colors.card,
         titleContentColor = colors.text,
         textContentColor = colors.secondary,
-        title = { Text("Вставить код сопряжения", style = AgType.title) },
+        title = { Text(s.chPastePairingTitle, style = AgType.title) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(AgDim.ControlGap)) {
                 OutlinedTextField(
                     value = text,
                     onValueChange = { text = it },
                     minLines = 2,
-                    label = { Text("Код agw://pair?...", style = AgType.caption) },
+                    label = { Text(s.chPairingCodeLabel, style = AgType.caption) },
                     textStyle = AgType.body,
                     shape = RoundedCornerShape(AgDim.ControlRadius),
                     colors = glassFieldColors(colors.glow),
@@ -874,11 +908,11 @@ private fun PairingPasteDialog(
                     contentColor = colors.onGlow,
                 ),
             ) {
-                Text("Далее", style = AgType.body)
+                Text(s.commonNext, style = AgType.body)
             }
         },
         dismissButton = {
-            AgGhostButton(text = "Отмена", onClick = onDismiss)
+            AgGhostButton(text = s.commonCancel, onClick = onDismiss)
         },
     )
 }
@@ -896,7 +930,8 @@ private fun PairingConfirmDialog(
     onConfirm: (PairingConfig) -> Unit,
 ) {
     val colors = AgTheme.colors
-    val parsed = remember(uri) { E2eCrypto.parsePairingUri(uri) }
+    val s = LocalStrings.current
+    val parsed = remember(uri, s) { E2eCrypto.parsePairingUri(uri, s) }
     val config = parsed.getOrNull()
 
     AlertDialog(
@@ -907,7 +942,7 @@ private fun PairingConfirmDialog(
         textContentColor = colors.secondary,
         title = {
             Text(
-                text = if (config != null) "Подключить телефон" else "Не удалось прочитать код сопряжения",
+                text = if (config != null) s.dashPairingConnectTitle else s.dashPairingReadFailedTitle,
                 style = AgType.title,
                 color = colors.text,
             )
@@ -915,29 +950,35 @@ private fun PairingConfirmDialog(
         text = {
             if (config == null) {
                 Text(
-                    text = parsed.exceptionOrNull()?.message ?: "Некорректная ссылка сопряжения",
+                    text = parsed.exceptionOrNull()?.message ?: s.e2eInvalidPairingLink,
                     style = AgType.body,
                     color = colors.secondary,
                 )
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(AgDim.ControlGap)) {
                     Text(
-                        text = "Приложение: ${stringResource(R.string.app_name)}",
+                        text = s.fill(
+                            s.dashPairingApp,
+                            "app" to stringResource(R.string.app_name),
+                        ),
                         style = AgType.body,
                         color = colors.secondary,
                     )
                     Text(
-                        text = "Сервер: ${config.server}",
+                        text = s.fill(s.dashPairingServer, "server" to config.server),
                         style = AgType.body,
                         color = colors.secondary,
                     )
                     Text(
-                        text = "Тема: ${E2eCrypto.maskTopic(config.topic)}",
+                        text = s.fill(
+                            s.dashPairingTopic,
+                            "topic" to E2eCrypto.maskTopic(config.topic),
+                        ),
                         style = AgType.body,
                         color = colors.secondary,
                     )
                     Text(
-                        text = if (config.e2eKey != null) "E2E: AES-256-GCM" else "E2E: выкл",
+                        text = if (config.e2eKey != null) s.dashPairingE2eOn else s.dashPairingE2eOff,
                         style = AgType.body,
                         color = colors.secondary,
                     )
@@ -955,15 +996,15 @@ private fun PairingConfirmDialog(
                         contentColor = colors.onGlow,
                     ),
                 ) {
-                    Text("Подключить", style = AgType.body)
+                    Text(s.dashConnect, style = AgType.body)
                 }
             } else {
-                AgGhostButton(text = "Закрыть", onClick = onDismiss)
+                AgGhostButton(text = s.commonClose, onClick = onDismiss)
             }
         },
         dismissButton = {
             if (config != null) {
-                AgGhostButton(text = "Отмена", onClick = onDismiss)
+                AgGhostButton(text = s.commonCancel, onClick = onDismiss)
             }
         },
     )
@@ -971,13 +1012,13 @@ private fun PairingConfirmDialog(
 
 /**
  * Human label for a stored config: the first preset with the same theme,
- * radius, density and enabled blocks wins; a hand-tuned config reads "Свой".
+ * radius, density and enabled blocks wins; a hand-tuned config reads "Custom".
  */
-private fun widgetPresetLabel(config: WidgetConfig): String {
+private fun widgetPresetLabel(config: WidgetConfig, s: AgStrings): String {
     val normalized = WidgetConfigCodec.normalize(config)
     val enabled = normalized.blocks.filter { it.enabled }.map { it.id }.toSet()
     val preset = WidgetPresets.all
-        // A "Только ZCode" preset is not offered in the `context` flavour, so a
+        // A "ZCode only" preset is not offered in the `context` flavour, so a
         // stale full-build config must not be labelled with it either.
         .filter { BuildConfig.ZCODE_ENABLED || it.id != WidgetPresets.zcodeOnly.id }
         .firstOrNull { candidate ->
@@ -987,15 +1028,25 @@ private fun widgetPresetLabel(config: WidgetConfig): String {
                 target.density == normalized.density &&
                 target.blocks.filter { it.enabled }.map { it.id }.toSet() == enabled
         }
-    return preset?.label ?: "Свой"
+    return preset?.let { presetLabel(it.id, s) } ?: s.wconfPresetCustom
+}
+
+/** Localised preset name; the ids are part of the stored widget config. */
+private fun presetLabel(id: String, s: AgStrings): String = when (id) {
+    WidgetPresets.dashboard.id -> s.wconfPresetDashboard
+    WidgetPresets.classic.id -> s.wconfPresetClassic
+    WidgetPresets.contextCompact.id -> s.wconfPresetContext
+    WidgetPresets.detailed.id -> s.wconfPresetDetailed
+    WidgetPresets.zcodeOnly.id -> s.wconfPresetZcodeOnly
+    else -> s.wconfPresetCustom
 }
 
 /** Human label for a [WidgetThemes] id; unknown ids fall back to the system theme. */
-private fun widgetThemeLabel(theme: String): String = when (WidgetThemes.normalize(theme)) {
+private fun widgetThemeLabel(theme: String, s: AgStrings): String = when (WidgetThemes.normalize(theme)) {
     WidgetThemes.GRAPHITE -> "Graphite"
     WidgetThemes.PAPER -> "Paper"
     WidgetThemes.OLED -> "OLED"
     WidgetThemes.GLASS -> "Glass"
     WidgetThemes.CLASSIC -> "Classic"
-    else -> "Авто"
+    else -> s.setThemeAuto
 }

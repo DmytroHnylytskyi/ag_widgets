@@ -18,6 +18,7 @@ import dev.agwidgets.data.AgStatus
 import dev.agwidgets.data.QuotaBucket
 import dev.agwidgets.data.StatusStore
 import dev.agwidgets.data.ZCodeStatus
+import dev.agwidgets.ui.i18n.AgStrings
 import dev.agwidgets.ui.parseInstant
 import kotlin.math.roundToInt
 
@@ -26,16 +27,17 @@ object Notifier {
 
     fun ensureChannel(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val s = StatusStore.resolveStrings(context)
             val mgr = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Лимиты",
+                s.notifChannelName,
                 NotificationManager.IMPORTANCE_DEFAULT
             ).apply {
                 description = if (BuildConfig.ZCODE_ENABLED) {
-                    "Уведомления об обновлении квот Antigravity и ваучерах ZCode"
+                    s.notifChannelDescriptionFull
                 } else {
-                    "Уведомления об обновлении квот Antigravity"
+                    s.notifChannelDescriptionContext
                 }
             }
             mgr.createNotificationChannel(channel)
@@ -46,6 +48,7 @@ object Notifier {
         if (prev == null || curr == null) return
         if (!canPostNotifications(context)) return
         ensureChannel(context)
+        val s = StatusStore.resolveStrings(context)
 
         for (currBucket in curr.buckets) {
             val prevBucket = prev.buckets.firstOrNull { it.id == currBucket.id } ?: continue
@@ -57,12 +60,16 @@ object Notifier {
                     ?: "changed"
                 if (StatusStore.isResetNotified(context, currBucket.id, resetKey)) continue
                 StatusStore.markResetNotified(context, currBucket.id, resetKey)
-                val pct = currFrac?.takeIf { it.isFinite() }?.let { "Доступно: ${(it * 100).roundToInt()}%" }
-                    ?: "Лимит сброшен"
+                val pct = currFrac?.takeIf { it.isFinite() }
+                    ?.let { s.fill(s.notifAvailablePct, "pct" to (it * 100).roundToInt()) }
+                    ?: s.notifLimitReset
                 sendNotification(
                     context,
                     notifIdForBucket(currBucket.id),
-                    "Квота ${bucketDisplayName(currBucket.id, currBucket.kind)} обновилась",
+                    s.fill(
+                        s.notifQuotaUpdated,
+                        "bucket" to bucketDisplayName(currBucket.id, currBucket.kind, s),
+                    ),
                     pct
                 )
             }
@@ -78,26 +85,27 @@ object Notifier {
         if (curr.networkError || curr.authOk == false) return
         if (!canPostNotifications(context)) return
         ensureChannel(context)
+        val s = StatusStore.resolveStrings(context)
 
         val key = "${curr.planId}|${curr.matched}"
         if (StatusStore.getLastNotifiedCoupon(context) == key) return
         StatusStore.markCouponNotified(context, key)
-        val detail = curr.matched.takeIf { it.isNotBlank() }
-            ?: "Откройте ZCode, чтобы забрать 300–500M токенов"
-        sendNotification(context, 103, "В ZCode доступен ваучер!", detail)
+        val detail = curr.matched.takeIf { it.isNotBlank() } ?: s.notifCouponDetail
+        sendNotification(context, 103, s.notifCouponTitle, detail)
     }
 
     fun notifyScheduledReset(context: Context, bucketId: String, kind: String, resetTime: String) {
         if (!canPostNotifications(context)) return
         if (StatusStore.isResetNotified(context, bucketId, resetTime)) return
         ensureChannel(context)
+        val s = StatusStore.resolveStrings(context)
         StatusStore.markResetNotified(context, bucketId, resetTime)
-        val label = bucketDisplayName(bucketId, kind)
+        val label = bucketDisplayName(bucketId, kind, s)
         sendNotification(
             context,
             notifIdForBucket(bucketId),
-            "Квота $label обновилась",
-            "Наступило запланированное время сброса лимита"
+            s.fill(s.notifQuotaUpdated, "bucket" to label),
+            s.notifScheduledResetBody
         )
     }
 
@@ -126,16 +134,16 @@ object Notifier {
         return if (instant.epochSecond > 0L) iso else null
     }
 
-    private fun bucketDisplayName(bucketId: String, kind: String): String {
+    private fun bucketDisplayName(bucketId: String, kind: String, s: AgStrings): String {
         val low = bucketId.lowercase()
         val group = when {
-            low.startsWith("gemini-") -> "Gemini "
-            low.startsWith("3p-") -> "Claude/GPT "
+            low.startsWith("gemini-") -> s.notifBucketGemini
+            low.startsWith("3p-") -> s.notifBucketThird
             else -> ""
         }
         val window = when (kind) {
-            "5h" -> "(5h)"
-            "weekly" -> "(неделя)"
+            "5h" -> s.notifWindow5h
+            "weekly" -> s.notifWindowWeekly
             else -> ""
         }
         return "$group$window".trim().ifEmpty { bucketId }

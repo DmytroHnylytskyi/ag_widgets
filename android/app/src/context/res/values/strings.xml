@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">AG Context</string>
-    <string name="widget_description">Контекст и лимиты Antigravity</string>
+    <string name="widget_description">Antigravity context and limits</string>
+    <string name="widget_config_title">Widget settings</string>
 </resources>

@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.agwidgets.data.E2eCrypto
+import dev.agwidgets.ui.i18n.LocalStrings
 import dev.agwidgets.ui.theme.AgDim
 import dev.agwidgets.ui.theme.AgTheme
 import dev.agwidgets.ui.theme.AgType
@@ -51,6 +52,7 @@ internal fun ChannelCard(
     onResetE2eKey: () -> Unit,
 ) {
     val colors = AgTheme.colors
+    val s = LocalStrings.current
     var manualExpanded by remember { mutableStateOf(false) }
     var showResetConfirm by remember { mutableStateOf(false) }
 
@@ -59,12 +61,12 @@ internal fun ChannelCard(
         // configured when there is something to talk to.
         val channelConfigured = topic.isNotBlank()
         SectionHeader(
-            serial = "02 / CHANNEL",
-            title = "Antigravity",
+            serial = s.serialChannel,
+            title = s.brandAntigravity,
             chipText = when {
                 channelConfigured && hasE2eKey -> "E2E"
                 channelConfigured -> "ntfy"
-                else -> "Не настроено"
+                else -> s.chNotConfigured
             },
             chipColor = when {
                 channelConfigured && hasE2eKey -> colors.green
@@ -74,14 +76,17 @@ internal fun ChannelCard(
         )
 
         if (channelConfigured) {
-            val e2eLabel = if (hasE2eKey) "E2E включён" else "без E2E"
+            val summary = s.fill(
+                if (hasE2eKey) s.chSummaryE2e else s.chSummaryPlain,
+                "topic" to E2eCrypto.maskTopic(topic),
+            )
             val serverSuffix = if (server.isNotBlank() && server != E2eCrypto.DEFAULT_NTFY_SERVER) {
                 " · $server"
             } else {
                 ""
             }
             Text(
-                text = "Канал: ${E2eCrypto.maskTopic(topic)} · $e2eLabel$serverSuffix",
+                text = summary + serverSuffix,
                 style = AgType.caption,
                 color = colors.muted,
                 maxLines = 2,
@@ -89,7 +94,7 @@ internal fun ChannelCard(
             )
         } else {
             Text(
-                text = "Откройте Настройки → Синхронизация на ПК и отсканируйте QR-код.",
+                text = s.chEmptyHint,
                 style = AgType.body,
                 color = colors.secondary,
             )
@@ -112,7 +117,7 @@ internal fun ChannelCard(
                 modifier = Modifier.size(18.dp),
             )
             Spacer(Modifier.width(8.dp))
-            Text(text = "Сканировать QR-код с ПК", style = AgType.body)
+            Text(text = s.chScanQr, style = AgType.body)
         }
 
         if (channelConfigured) {
@@ -129,7 +134,7 @@ internal fun ChannelCard(
                 ),
             ) {
                 Text(
-                    text = if (isRefreshing) "Обновляю…" else "Обновить",
+                    text = if (isRefreshing) s.chRefreshing else s.commonRefresh,
                     style = AgType.body,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -146,7 +151,7 @@ internal fun ChannelCard(
         }
 
         AgGhostButton(
-            text = if (manualExpanded) "Скрыть ручные настройки" else "Настроить вручную",
+            text = if (manualExpanded) s.chManualHide else s.chManualShow,
             onClick = { manualExpanded = !manualExpanded },
             icon = if (manualExpanded) UiIcons.ArrowUp else UiIcons.ArrowDown,
         )
@@ -156,7 +161,7 @@ internal fun ChannelCard(
                 value = topic,
                 onValueChange = onTopicChange,
                 singleLine = true,
-                label = { Text("Тема ntfy", style = AgType.caption) },
+                label = { Text(s.chTopicLabel, style = AgType.caption) },
                 textStyle = AgType.body,
                 shape = RoundedCornerShape(AgDim.ControlRadius),
                 colors = glassFieldColors(colors.glow),
@@ -166,7 +171,7 @@ internal fun ChannelCard(
                 value = server,
                 onValueChange = onServerChange,
                 singleLine = true,
-                label = { Text("Сервер ntfy", style = AgType.caption) },
+                label = { Text(s.chServerLabel, style = AgType.caption) },
                 placeholder = { Text("https://ntfy.sh", style = AgType.caption) },
                 textStyle = AgType.body,
                 shape = RoundedCornerShape(AgDim.ControlRadius),
@@ -174,15 +179,15 @@ internal fun ChannelCard(
                 modifier = Modifier.fillMaxWidth(),
             )
             Text(
-                text = "Только https://. Пустое значение вернёт https://ntfy.sh",
+                text = s.chServerHint,
                 style = AgType.caption,
                 color = colors.muted,
             )
-            AgGhostButton(text = "Сохранить", onClick = onSave)
-            AgGhostButton(text = "Вставить код сопряжения", onClick = onPasteCode)
+            AgGhostButton(text = s.commonSave, onClick = onSave)
+            AgGhostButton(text = s.chPastePairing, onClick = onPasteCode)
             if (hasE2eKey) {
                 AgGhostButton(
-                    text = "Сбросить E2E-ключ",
+                    text = s.chResetE2eKey,
                     onClick = { showResetConfirm = true },
                     contentColor = colors.rose,
                 )
@@ -197,11 +202,10 @@ internal fun ChannelCard(
             containerColor = colors.card,
             titleContentColor = colors.text,
             textContentColor = colors.secondary,
-            title = { Text("Сбросить E2E-ключ?", style = AgType.title) },
+            title = { Text(s.chResetE2eTitle, style = AgType.title) },
             text = {
                 Text(
-                    text = "Телефон перестанет расшифровывать сообщения, пока вы " +
-                        "не отсканируете новый QR-код.",
+                    text = s.chResetE2eBody,
                     style = AgType.body,
                     color = colors.secondary,
                 )
@@ -219,11 +223,11 @@ internal fun ChannelCard(
                         contentColor = Color.White,
                     ),
                 ) {
-                    Text("Сбросить", style = AgType.body)
+                    Text(s.commonReset, style = AgType.body)
                 }
             },
             dismissButton = {
-                AgGhostButton(text = "Отмена", onClick = { showResetConfirm = false })
+                AgGhostButton(text = s.commonCancel, onClick = { showResetConfirm = false })
             },
         )
     }

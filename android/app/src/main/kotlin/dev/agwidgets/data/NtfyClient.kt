@@ -1,5 +1,7 @@
 package dev.agwidgets.data
 
+import dev.agwidgets.ui.i18n.AgStrings
+import dev.agwidgets.ui.i18n.RuStrings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -13,25 +15,22 @@ object NtfyClient {
     private val TOPIC_PATTERN = Regex("^[A-Za-z0-9_-]{1,64}$")
     private const val STATUS_TITLE = "ag-widgets-status"
 
-    private const val ERR_NO_MESSAGES = "В теме пока нет сообщений"
-    private const val ERR_NO_STATUS = "Нет сообщений статуса в теме ntfy"
-    private const val ERR_ENCRYPTED_NO_KEY = "Сообщение зашифровано — отсканируйте QR-код с ПК"
-    private const val ERR_WRONG_E2E_KEY = "Неверный E2E-ключ — отсканируйте новый QR с ПК"
-    private const val ERR_BAD_JSON = "Неверный JSON в сообщении ntfy"
-    private const val ERR_EXPECTED_E2E = "Ожидалось зашифрованное сообщение (E2E)"
-
     /**
      * Polls the newest status message of [topic].
      *
      * The defaults keep pre-E2E callers working (`ntfy.sh`, plaintext). When an
      * [e2eKey] is configured, a plaintext payload is rejected on purpose so a
      * network attacker cannot strip the encryption (anti-downgrade).
+     *
+     * [strings] defaults to Russian so the existing user-facing texts stay
+     * byte-for-byte unchanged for callers that do not resolve a language yet.
      */
     suspend fun fetchLatestMessage(
         topic: String,
         timeoutMs: Int = 15_000,
         serverUrl: String = E2eCrypto.DEFAULT_NTFY_SERVER,
         e2eKey: String? = null,
+        strings: AgStrings = RuStrings,
     ): Result<String> = withContext(Dispatchers.IO) {
         val clean = topic.trim()
         if (clean.isEmpty() || !clean.matches(TOPIC_PATTERN)) {
@@ -56,9 +55,9 @@ object NtfyClient {
                 reader.readLines().map { it.trim() }.filter { it.isNotEmpty() }
             }
             if (lines.isEmpty()) {
-                return@withContext Result.failure(IllegalStateException(ERR_NO_MESSAGES))
+                return@withContext Result.failure(IllegalStateException(strings.ntfyNoMessages))
             }
-            extractLatestStatusPayload(lines, e2eKey)
+            extractLatestStatusPayload(lines, e2eKey, strings)
         } catch (e: Exception) {
             Result.failure(e)
         } finally {
@@ -86,24 +85,28 @@ object NtfyClient {
      * (no key configured). An envelope without a key and plaintext with a key
      * are both failures.
      */
-    internal fun extractLatestStatusPayload(lines: List<String>, e2eKey: String?): Result<String> {
+    internal fun extractLatestStatusPayload(
+        lines: List<String>,
+        e2eKey: String?,
+        strings: AgStrings = RuStrings,
+    ): Result<String> {
         // Pick the newest status-shaped message (either an E2E envelope or a
         // plaintext AgStatus), skipping unrelated/malformed events on the topic.
         val payload = lines.asReversed().firstNotNullOfOrNull { line ->
             messagePayloadOrNull(line)?.takeIf { candidate ->
                 E2eCrypto.isEncryptedEnvelope(candidate) || AgStatus.fromJson(candidate) != null
             }
-        } ?: return Result.failure(IllegalStateException(ERR_NO_STATUS))
+        } ?: return Result.failure(IllegalStateException(strings.ntfyNoStatus))
 
         if (E2eCrypto.isEncryptedEnvelope(payload)) {
             if (e2eKey == null) {
-                return Result.failure(IllegalStateException(ERR_ENCRYPTED_NO_KEY))
+                return Result.failure(IllegalStateException(strings.ntfyEncryptedNoKey))
             }
-            val plaintext = E2eCrypto.decryptEnvelope(payload, e2eKey).getOrElse {
-                return Result.failure(IllegalStateException(ERR_WRONG_E2E_KEY))
+            val plaintext = E2eCrypto.decryptEnvelope(payload, e2eKey, strings).getOrElse {
+                return Result.failure(IllegalStateException(strings.ntfyWrongKey))
             }
             if (AgStatus.fromJson(plaintext) == null) {
-                return Result.failure(IllegalStateException(ERR_BAD_JSON))
+                return Result.failure(IllegalStateException(strings.ntfyBadJson))
             }
             return Result.success(plaintext)
         }
@@ -111,7 +114,7 @@ object NtfyClient {
         if (e2eKey != null) {
             // Anti-downgrade: with a key configured only authenticated envelopes
             // are trusted, otherwise anyone could publish forged quotas.
-            return Result.failure(IllegalStateException(ERR_EXPECTED_E2E))
+            return Result.failure(IllegalStateException(strings.ntfyExpectedE2e))
         }
         return Result.success(payload)
     }

@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.agwidgets.R
 import dev.agwidgets.data.AgStatus
+import dev.agwidgets.ui.i18n.LocalStrings
 import dev.agwidgets.ui.statusAgeMinutes
 import dev.agwidgets.ui.theme.AgTheme
 import dev.agwidgets.ui.theme.AgType
@@ -44,13 +45,14 @@ internal fun Header(
     val age = statusAgeMinutes(status?.pcUpdatedAt ?: status?.updatedAt, nowMs)
     val classic = AgTheme.colors.isClassic
     val colorOf = AgTheme.colors
+    val s = LocalStrings.current
     val (chipText, chipColor) = when {
-        status == null -> (if (classic) "НЕТ ДАННЫХ" else "Нет данных") to colorOf.muted
+        status == null -> (if (classic) s.statusClassicNoData else s.statusNoData) to colorOf.muted
         // An unknown age is not a status: the chip stays quiet instead of "—".
-        age == null -> (if (classic) "НЕТ ДАННЫХ" else "Нет данных") to colorOf.muted
-        age < 15 -> (if (classic) "LIVE" else "Онлайн") to colorOf.green
-        age < 120 -> (if (classic) "ТИХО" else "Тихо") to colorOf.amber
-        else -> (if (classic) "СТАРО" else "Устарело") to colorOf.muted
+        age == null -> (if (classic) s.statusClassicNoData else s.statusNoData) to colorOf.muted
+        age < 15 -> (if (classic) s.statusClassicLive else s.statusOnline) to colorOf.green
+        age < 120 -> (if (classic) s.statusClassicQuiet else s.statusQuiet) to colorOf.amber
+        else -> (if (classic) s.statusClassicStale else s.statusStale) to colorOf.muted
     }
 
     if (classic) {
@@ -96,7 +98,7 @@ private fun ModernHeader(
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "AG Widgets",
+                text = LocalStrings.current.brandWidgets,
                 style = AgType.title,
                 color = colors.text,
                 maxLines = 1,
@@ -128,13 +130,14 @@ private fun ClassicHeader(
     onOpenSettings: () -> Unit,
 ) {
     val colors = AgTheme.colors
+    val s = LocalStrings.current
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
             BrandMark(tint = colors.glow, size = 32)
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "AG WIDGETS",
+                    text = s.brandWidgetsCaps,
                     style = AgType.title,
                     letterSpacing = (-0.2).sp,
                     color = colors.text,
@@ -142,7 +145,7 @@ private fun ClassicHeader(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = "ANTIGRAVITY · ZCODE · 001",
+                    text = s.brandAntigravityZcode001,
                     fontFamily = FontFamily.Monospace,
                     fontSize = 9.sp,
                     lineHeight = 13.sp,
@@ -151,7 +154,7 @@ private fun ClassicHeader(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.semantics {
-                        contentDescription = "Antigravity, ZCode, сборка 001"
+                        contentDescription = s.dashHeaderSubtitleA11y
                     },
                 )
             }

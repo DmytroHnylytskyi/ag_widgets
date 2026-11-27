@@ -101,6 +101,7 @@ internal suspend fun performRefresh(
 
 /** Polls the ntfy channel (Antigravity quotas + PC context summary). */
 private suspend fun refreshNtfy(context: Context, timeoutMs: Int): Boolean {
+    val s = StatusStore.resolveStrings(context)
     // ZCode-only mode has no PC to poll; an empty topic already skips the request.
     val mode = StatusStore.getMode(context)
     val topic = if (mode == StatusStore.MODE_ZCODE) "" else StatusStore.getTopic(context)
@@ -111,6 +112,7 @@ private suspend fun refreshNtfy(context: Context, timeoutMs: Int): Boolean {
         timeoutMs,
         StatusStore.getNtfyServer(context),
         StatusStore.getE2eKey(context),
+        s,
     )
     return res.fold(
         onSuccess = { jsonText ->
@@ -122,12 +124,12 @@ private suspend fun refreshNtfy(context: Context, timeoutMs: Int): Boolean {
                     Notifier.checkAndNotify(context, prev, curr)
                 }
             } else {
-                StatusStore.saveError(context, "Неверный JSON в сообщении ntfy")
+                StatusStore.saveError(context, s.workBadJson)
             }
             false
         },
         onFailure = { err ->
-            StatusStore.saveError(context, err.message ?: "Ошибка сети ntfy")
+            StatusStore.saveError(context, err.message ?: s.workNtfyNetworkError)
             true
         }
     )
@@ -141,6 +143,7 @@ private suspend fun refreshZCode(context: Context, timeoutMs: Int): Boolean {
     // After a 429 the platform asked us to wait; polling again re-arms the ban.
     if (ZCodeStore.shouldBackoffRateLimit(context)) return false
 
+    val s = StatusStore.resolveStrings(context)
     val deviceMid = ZCodeStore.getOrCreateDeviceMid(context)
     val seq = ZCodeStore.nextSeq(context)
     val previous = ZCodeStore.getDirect(context)
@@ -151,12 +154,12 @@ private suspend fun refreshZCode(context: Context, timeoutMs: Int): Boolean {
                 Notifier.checkZCodeCouponTransition(context, prevZ, currZ)
                 if (zStatus.networkError || zStatus.errorKind != null) {
                     val reason = when (zStatus.errorKind) {
-                        "auth_expired" -> "ZCode: токен истёк"
-                        "rate_limited" -> "ZCode: лимит запросов (429)"
-                        "server_error" -> "ZCode: ошибка сервера"
-                        "api_changed" -> "ZCode: схема API изменилась"
-                        "parse_failed" -> "ZCode: не удалось разобрать ответ"
-                        else -> "ZCode: нет связи"
+                        "auth_expired" -> s.workZcodeAuthExpired
+                        "rate_limited" -> s.workZcodeRateLimited
+                        "server_error" -> s.workZcodeServerError
+                        "api_changed" -> s.workZcodeApiChanged
+                        "parse_failed" -> s.workZcodeParseFailed
+                        else -> s.workZcodeNoConnection
                     }
                     StatusStore.saveError(context, reason)
                     zStatus.networkError ||
@@ -180,7 +183,7 @@ private suspend fun refreshZCode(context: Context, timeoutMs: Int): Boolean {
                     checkedAt = nowIso,
                 )
                 ZCodeStore.saveDirect(context, failed)
-                StatusStore.saveError(context, err.message ?: "Ошибка сети ZCode")
+                StatusStore.saveError(context, err.message ?: s.workZcodeNetworkError)
                 true
             }
         )

@@ -38,7 +38,7 @@
         <activity
             android:name=".ui.widget.WidgetConfigActivity"
             android:exported="true"
-            android:label="Настройка виджета"
+            android:label="@string/widget_config_title"
             android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.AGWidgets">
             <intent-filter>

@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import dev.agwidgets.data.ZCodeStatus
 import dev.agwidgets.ui.formatDateShort
 import dev.agwidgets.ui.formatUnits
+import dev.agwidgets.ui.i18n.LocalStrings
 import dev.agwidgets.ui.theme.AgDim
 import dev.agwidgets.ui.theme.AgTheme
 import dev.agwidgets.ui.theme.AgType
@@ -45,6 +46,7 @@ internal fun ZCodeDashboardCard(
     onOpenSettings: () -> Unit,
 ) {
     val colors = AgTheme.colors
+    val s = LocalStrings.current
     val (chipText, chipColor) = zcodeDashboardChip(zcode)
     val remaining = zcode?.remainingUnits
     val total = zcode?.totalUnits
@@ -57,8 +59,8 @@ internal fun ZCodeDashboardCard(
 
     GlassCard {
         SectionHeader(
-            serial = "03 / ACCESS",
-            title = "ZCode",
+            serial = s.serialAccess,
+            title = s.labelZcode,
             chipText = chipText,
             chipColor = chipColor,
         )
@@ -88,9 +90,13 @@ internal fun ZCodeDashboardCard(
                 ) {
                     Text(
                         text = if (total != null) {
-                            "Осталось ${formatUnits(remaining)} из ${formatUnits(total)}"
+                            s.fill(
+                                s.dashZcodeRemainingOf,
+                                "remaining" to formatUnits(remaining),
+                                "total" to formatUnits(total),
+                            )
                         } else {
-                            "Осталось ${formatUnits(remaining)}"
+                            s.fill(s.dashZcodeRemainingOnly, "remaining" to formatUnits(remaining))
                         },
                         style = AgType.body,
                         color = colors.text,
@@ -110,7 +116,7 @@ internal fun ZCodeDashboardCard(
                 }
                 zcode.endsAt?.let {
                     Text(
-                        text = "Действует до ${formatDateShort(it)}",
+                        text = s.fill(s.dashZcodeValidUntil, "date" to formatDateShort(it)),
                         style = AgType.caption,
                         color = colors.muted,
                     )
@@ -135,12 +141,12 @@ internal fun ZCodeDashboardCard(
                     ),
                 ) {
                     Text(
-                        text = if (isPending) "Ожидание входа…" else "Войти в Z.ai",
+                        text = if (isPending) s.dashZcodeWaitingLogin else s.dashZcodeSignIn,
                         style = AgType.body,
                     )
                 }
             }
-            AgGhostButton(text = "Настроить", onClick = onOpenSettings)
+            AgGhostButton(text = s.commonConfigure, onClick = onOpenSettings)
         }
     }
 }
@@ -171,24 +177,25 @@ private fun ZCodeBar(fraction: Float) {
 @Composable
 private fun zcodeDashboardChip(zcode: ZCodeStatus?): Pair<String, Color> {
     val colors = AgTheme.colors
-    if (zcode == null) return "Нет данных" to colors.muted
+    val s = LocalStrings.current
+    if (zcode == null) return s.statusNoData to colors.muted
     if (zcode.isCouponUnknown) {
         return when (zcode.errorKind) {
-            "auth_expired" -> "Нужен вход" to colors.amber
-            "rate_limited" -> "Лимит запросов" to colors.amber
-            "network" -> "Нет связи" to colors.rose
-            "server_error", "api_changed", "parse_failed" -> "Ошибка проверки" to colors.rose
-            else -> "Неизвестно" to colors.muted
+            "auth_expired" -> s.statusLoginRequired to colors.amber
+            "rate_limited" -> s.statusRateLimited to colors.amber
+            "network" -> s.statusNoConnection to colors.rose
+            "server_error", "api_changed", "parse_failed" -> s.statusCheckFailed to colors.rose
+            else -> s.statusUnknown to colors.muted
         }
     }
-    if (zcode.networkError) return "Нет связи" to colors.rose
-    if (zcode.authOk == false) return "Нужен вход" to colors.amber
-    if (zcode.method == "disabled") return "Не подключён" to colors.muted
-    if (zcode.isCouponVisible) return "Ваучер" to colors.glow
+    if (zcode.networkError) return s.statusNoConnection to colors.rose
+    if (zcode.authOk == false) return s.statusLoginRequired to colors.amber
+    if (zcode.method == "disabled") return s.statusNotConnected to colors.muted
+    if (zcode.isCouponVisible) return s.statusCoupon to colors.glow
     val remaining = zcode.remainingUnits
     if (remaining != null && (remaining > 0L || (zcode.totalUnits ?: 0L) > 0L)) {
-        return "Баланс" to colors.green
+        return s.statusBalance to colors.green
     }
-    if (zcode.couponState == ZCodeStatus.COUPON_ABSENT) return "Нет ваучера" to colors.muted
-    return "Нет данных" to colors.muted
+    if (zcode.couponState == ZCodeStatus.COUPON_ABSENT) return s.statusNoCoupon to colors.muted
+    return s.statusNoData to colors.muted
 }

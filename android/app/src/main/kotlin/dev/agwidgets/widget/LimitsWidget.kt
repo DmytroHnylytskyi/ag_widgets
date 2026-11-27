@@ -43,6 +43,7 @@ import dev.agwidgets.ui.parseInstant
 import dev.agwidgets.ui.theme.AgColors
 import dev.agwidgets.ui.theme.ResolvedAgTheme
 import dev.agwidgets.ui.theme.agColorsFor
+import dev.agwidgets.ui.i18n.AgStrings
 import dev.agwidgets.work.performRefresh
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -116,8 +117,9 @@ class LimitsWidget : GlanceAppWidget() {
         val config = WidgetConfigStore.get(context, appWidgetId)
         val resolved = WidgetConfigStore.resolveWidgetTheme(context, config)
         val status = StatusStore.getMergedStatus(context)
+        val strings = StatusStore.resolveStrings(context)
         provideContent {
-            WidgetContent(status = status, resolved = resolved, config = config)
+            WidgetContent(status = status, resolved = resolved, config = config, strings = strings)
         }
     }
 }
@@ -135,7 +137,12 @@ private fun widgetBackground(resolved: ResolvedAgTheme): Int = when (resolved.id
 }
 
 @Composable
-private fun WidgetContent(status: AgStatus?, resolved: ResolvedAgTheme, config: WidgetConfig) {
+private fun WidgetContent(
+    status: AgStatus?,
+    resolved: ResolvedAgTheme,
+    config: WidgetConfig,
+    strings: AgStrings,
+) {
     val size = LocalSize.current
     val heightDp = size.height.value
     val widthDp = size.width.value
@@ -214,7 +221,7 @@ private fun WidgetContent(status: AgStatus?, resolved: ResolvedAgTheme, config: 
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Text(
-                        text = "Нет данных — откройте AG Widgets",
+                        text = strings.watomsNoDataPrompt,
                         style = TextStyle(
                             color = ColorProvider(colors.secondary),
                             fontSize = scaledSp(11f, config.fontScale, colors).sp,
@@ -222,7 +229,7 @@ private fun WidgetContent(status: AgStatus?, resolved: ResolvedAgTheme, config: 
                         maxLines = 2,
                     )
                     Spacer(GlanceModifier.height(8.dp))
-                    InlineRefreshButton(colors = colors, fontScale = config.fontScale)
+                    InlineRefreshButton(colors = colors, fontScale = config.fontScale, strings = strings)
                 }
             }
             return@Box
@@ -269,6 +276,7 @@ private fun WidgetContent(status: AgStatus?, resolved: ResolvedAgTheme, config: 
                         colors = colors,
                         compact = isCompactHeight,
                         stale = stale,
+                        strings = strings,
                     )
                     WidgetBlockId.CONTEXT -> ContextBarAtom(
                         ctx = status.contextSummary,
@@ -276,6 +284,7 @@ private fun WidgetContent(status: AgStatus?, resolved: ResolvedAgTheme, config: 
                         colors = colors,
                         showInlineRefresh = showInlineRefresh,
                         barWidthDp = contentWidthDp,
+                        strings = strings,
                     )
                     WidgetBlockId.ZCODE -> ZCodeAtom(
                         zcode = status.zcode,
@@ -284,6 +293,7 @@ private fun WidgetContent(status: AgStatus?, resolved: ResolvedAgTheme, config: 
                         showInlineRefresh = showInlineRefresh,
                         contentWidthDp = contentWidthDp,
                         trailingContext = trailingContext,
+                        strings = strings,
                     )
                     WidgetBlockId.QUOTAS -> {
                         if (showInlineRefresh) {
@@ -298,9 +308,14 @@ private fun WidgetContent(status: AgStatus?, resolved: ResolvedAgTheme, config: 
                                         colors = colors,
                                         isCompactHeight = isCompactHeight || isNarrow,
                                         contentWidthDp = contentWidthDp - 56f,
+                                        strings = strings,
                                     )
                                 }
-                                InlineRefreshButton(colors = colors, fontScale = config.fontScale)
+                                InlineRefreshButton(
+                                    colors = colors,
+                                    fontScale = config.fontScale,
+                                    strings = strings,
+                                )
                             }
                         } else {
                             QuotasAtom(
@@ -309,6 +324,7 @@ private fun WidgetContent(status: AgStatus?, resolved: ResolvedAgTheme, config: 
                                 colors = colors,
                                 isCompactHeight = isCompactHeight || isNarrow,
                                 contentWidthDp = contentWidthDp,
+                                strings = strings,
                             )
                         }
                     }
@@ -317,14 +333,14 @@ private fun WidgetContent(status: AgStatus?, resolved: ResolvedAgTheme, config: 
 
             // Every block disabled: keep the widget actionable instead of empty.
             if (enabledBlocks.isEmpty()) {
-                InlineRefreshButton(colors = colors, fontScale = config.fontScale)
+                InlineRefreshButton(colors = colors, fontScale = config.fontScale, strings = strings)
             }
 
             // A failing collector is a state, not a silent blank card.
             status.antigravityError?.takeIf { it.isNotBlank() }?.let { error ->
                 Spacer(GlanceModifier.height(gap.dp))
                 Text(
-                    text = fit("Ошибка сбора: $error", 44),
+                    text = fit(strings.fill(strings.watomsCollectError, "error" to error), 44),
                     style = TextStyle(
                         color = ColorProvider(colors.amber),
                         fontSize = scaledSp(9f, config.fontScale, colors).sp,

@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import dev.agwidgets.ui.i18n.LocalStrings
 import dev.agwidgets.ui.theme.AgDim
 import dev.agwidgets.ui.theme.AgTheme
 import dev.agwidgets.ui.theme.AgType
@@ -33,13 +34,14 @@ internal fun DiagnosticsCard(
 ) {
     val colors = AgTheme.colors
     val classic = colors.isClassic
+    val s = LocalStrings.current
     GlassCard {
         SectionHeader(
-            serial = "05 / SYSTEM",
-            title = "Диагностика",
+            serial = s.serialSystem,
+            title = s.diagTitle,
             trailing = {
                 AgGhostButton(
-                    text = if (expanded) "Скрыть" else "Показать JSON",
+                    text = if (expanded) s.diagHide else s.diagShowJson,
                     onClick = onToggle,
                 )
             },
@@ -60,7 +62,7 @@ internal fun DiagnosticsCard(
                         .padding(AgDim.ControlGap),
                 ) {
                     Text(
-                        text = rawJson ?: "Данных пока нет — нажмите «Обновить»",
+                        text = rawJson ?: s.diagNoData,
                         style = AgType.caption.copy(fontFamily = FontFamily.Monospace),
                         color = if (classic) colors.muted else colors.secondary,
                         softWrap = false,
@@ -69,7 +71,7 @@ internal fun DiagnosticsCard(
                 }
                 lastError?.takeIf { it.isNotBlank() }?.let { error ->
                     Text(
-                        text = "Последняя ошибка: $error",
+                        text = s.fill(s.diagLastError, "error" to error),
                         style = AgType.body,
                         color = colors.amber,
                     )
@@ -79,7 +81,7 @@ internal fun DiagnosticsCard(
         if (onChangeMode != null) {
             // v1 invariant: the mode can always be reset from Diagnostika.
             AgGhostButton(
-                text = if (classic) "СМЕНИТЬ РЕЖИМ" else "Сменить режим",
+                text = if (classic) s.diagChangeModeClassic else s.diagChangeMode,
                 onClick = onChangeMode,
                 contentColor = colors.secondary,
             )

@@ -49,6 +49,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -78,10 +79,15 @@ import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.updateAll
 import androidx.lifecycle.lifecycleScope
 import dev.agwidgets.BuildConfig
+import dev.agwidgets.data.StatusStore
 import dev.agwidgets.ui.components.AgGhostButton
 import dev.agwidgets.ui.components.AgIconButton
 import dev.agwidgets.ui.components.GlassCard
 import dev.agwidgets.ui.components.UiIcons
+import dev.agwidgets.ui.i18n.AgStrings
+import dev.agwidgets.ui.i18n.AppLanguage
+import dev.agwidgets.ui.i18n.LocalStrings
+import dev.agwidgets.ui.i18n.stringsFor
 import dev.agwidgets.ui.theme.AGWidgetsTheme
 import dev.agwidgets.ui.theme.AgDim
 import dev.agwidgets.ui.theme.AgThemeMode
@@ -123,23 +129,26 @@ class WidgetConfigActivity : ComponentActivity() {
         enableEdgeToEdge()
         val appContext = applicationContext
         setContent {
+            val strings = stringsFor(AppLanguage.resolve(StatusStore.getLanguage(appContext)))
             var config by remember { mutableStateOf(WidgetConfigStore.get(appContext, appWidgetId)) }
             var saving by remember { mutableStateOf(false) }
             // `theme = "system"` inherits the *app* theme in the preview, so the
             // chrome around it must resolve through the very same helper.
             val chromeMode = remember(config.theme) { chromeThemeMode(appContext, config) }
-            AGWidgetsTheme(themeMode = chromeMode) {
-                WidgetConfigScreen(
-                    config = config,
-                    saving = saving,
-                    onChange = { config = it },
-                    onSave = {
-                        if (saving) return@WidgetConfigScreen
-                        saving = true
-                        saveAndRefresh(appWidgetId, config)
-                    },
-                    onCancel = { finish() },
-                )
+            CompositionLocalProvider(LocalStrings provides strings) {
+                AGWidgetsTheme(themeMode = chromeMode) {
+                    WidgetConfigScreen(
+                        config = config,
+                        saving = saving,
+                        onChange = { config = it },
+                        onSave = {
+                            if (saving) return@WidgetConfigScreen
+                            saving = true
+                            saveAndRefresh(appWidgetId, config)
+                        },
+                        onCancel = { finish() },
+                    )
+                }
             }
         }
     }
@@ -172,6 +181,7 @@ private fun WidgetConfigScreen(
     onCancel: () -> Unit,
 ) {
     val colors = AgTheme.colors
+    val s = LocalStrings.current
     val scrollState = rememberScrollState()
     Column(
         modifier = Modifier
@@ -188,14 +198,14 @@ private fun WidgetConfigScreen(
         ) {
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "Настройка виджета",
+                    text = s.wconfTitle,
                     style = AgType.title,
                     color = colors.text,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
-                AgGhostButton(text = "Отмена", onClick = onCancel)
+                AgGhostButton(text = s.commonCancel, onClick = onCancel)
             }
             Spacer(Modifier.height(AgDim.ControlGap))
             WidgetLivePreview(config = config, modifier = Modifier.fillMaxWidth())
@@ -265,7 +275,7 @@ private fun WidgetConfigScreen(
                     ),
                 ) {
                     Text(
-                        text = if (saving) "Сохранение…" else "Сохранить виджет",
+                        text = if (saving) s.wconfSaving else s.wconfSave,
                         style = AgType.body,
                     )
                 }
@@ -289,7 +299,8 @@ private fun ConfigSection(title: String, content: @Composable ColumnScope.() -> 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PresetsSection(config: WidgetConfig, onChange: (WidgetConfig) -> Unit) {
-    ConfigSection(title = "Пресеты") {
+    val s = LocalStrings.current
+    ConfigSection(title = s.wconfPresets) {
         // FlowRow instead of a clipped horizontal strip: every preset label
         // stays whole at 320dp and at font_scale 1.3.
         FlowRow(
@@ -303,7 +314,7 @@ private fun PresetsSection(config: WidgetConfig, onChange: (WidgetConfig) -> Uni
                 .filter { BuildConfig.ZCODE_ENABLED || it.id != WidgetPresets.zcodeOnly.id }
                 .forEach { preset ->
                     SelectChip(
-                        label = preset.label,
+                        label = presetLabel(preset.id, s),
                         // Compare normalised configs: a stored order/options pair must
                         // not un-highlight the preset the user just opened.
                         selected = WidgetConfigCodec.normalize(preset.config) ==
@@ -317,7 +328,8 @@ private fun PresetsSection(config: WidgetConfig, onChange: (WidgetConfig) -> Uni
 
 @Composable
 private fun BlocksSection(config: WidgetConfig, onChange: (WidgetConfig) -> Unit) {
-    ConfigSection(title = "Блоки") {
+    val s = LocalStrings.current
+    ConfigSection(title = s.wconfBlocks) {
         // The `context` flavour has no ZCode block: hide its row instead of
         // offering a switch that can never render, and reorder between adjacent
         // visible rows so arrows never swap with an invisible block.
@@ -333,7 +345,7 @@ private fun BlocksSection(config: WidgetConfig, onChange: (WidgetConfig) -> Unit
             }
             BlockRow(
                 block = block,
-                title = blockTitle(block.id),
+                title = blockTitle(block.id, s),
                 canMoveUp = position > 0,
                 canMoveDown = position < visible.lastIndex,
                 onMoveUp = { onChange(config.moveBlock(index, visible[position - 1].index)) },
@@ -365,6 +377,7 @@ private fun BlockRow(
     onOption: (String, Boolean) -> Unit,
 ) {
     val colors = AgTheme.colors
+    val s = LocalStrings.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -396,14 +409,14 @@ private fun BlockRow(
             // 8dp between every pair of touch targets, never 0dp.
             AgIconButton(
                 icon = UiIcons.ArrowUp,
-                contentDescription = "Переместить «$title» вверх",
+                contentDescription = s.fill(s.wconfMoveUp, "title" to title),
                 onClick = onMoveUp,
                 enabled = canMoveUp,
             )
             Spacer(Modifier.width(AgDim.ControlGap))
             AgIconButton(
                 icon = UiIcons.ArrowDown,
-                contentDescription = "Переместить «$title» вниз",
+                contentDescription = s.fill(s.wconfMoveDown, "title" to title),
                 onClick = onMoveDown,
                 enabled = canMoveDown,
             )
@@ -422,7 +435,7 @@ private fun BlockRow(
         }
         when (block.id) {
             WidgetBlockId.CONTEXT -> OptionRow(
-                label = "Чип /compact",
+                label = s.wconfOptionCompactChip,
                 checked = block.options["show_compact_chip"] ?: true,
                 enabled = block.enabled,
                 onCheckedChange = { onOption("show_compact_chip", it) },
@@ -434,12 +447,12 @@ private fun BlockRow(
                 OptionRow("Claude / GPT", block.options["show_3p"] ?: true, block.enabled) {
                     onOption("show_3p", it)
                 }
-                OptionRow("Таймер сброса", block.options["show_countdown"] ?: true, block.enabled) {
+                OptionRow(s.wconfOptionResetTimer, block.options["show_countdown"] ?: true, block.enabled) {
                     onOption("show_countdown", it)
                 }
             }
             WidgetBlockId.ZCODE -> OptionRow(
-                label = "Полоса баланса",
+                label = s.wconfOptionBalanceBar,
                 checked = block.options["show_balance_bar"] ?: true,
                 enabled = block.enabled,
                 onCheckedChange = { onOption("show_balance_bar", it) },
@@ -499,10 +512,11 @@ private fun OptionRow(
 @Composable
 private fun StyleSection(config: WidgetConfig, onChange: (WidgetConfig) -> Unit) {
     val colors = AgTheme.colors
+    val s = LocalStrings.current
     val selectedTheme = WidgetThemes.normalize(config.theme)
     val selectedAccent = WidgetConfigCodec.normalizeHexAccent(config.customAccent)
-    ConfigSection(title = "Стиль") {
-        Text(text = "Тема", style = AgType.body, color = colors.secondary)
+    ConfigSection(title = s.wconfStyle) {
+        Text(text = s.labelTheme, style = AgType.body, color = colors.secondary)
         FlowRow(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(AgDim.ControlGap),
@@ -510,13 +524,13 @@ private fun StyleSection(config: WidgetConfig, onChange: (WidgetConfig) -> Unit)
         ) {
             WidgetThemes.all.forEach { theme ->
                 SelectChip(
-                    label = themeLabel(theme),
+                    label = themeLabel(theme, s),
                     selected = theme == selectedTheme,
                     onClick = { onChange(config.copy(theme = theme)) },
                 )
             }
         }
-        Text(text = "Акцент", style = AgType.body, color = colors.secondary)
+        Text(text = s.wconfAccent, style = AgType.body, color = colors.secondary)
         FlowRow(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(AgDim.ControlGap),
@@ -525,20 +539,20 @@ private fun StyleSection(config: WidgetConfig, onChange: (WidgetConfig) -> Unit)
             AccentDot(
                 color = null,
                 selected = selectedAccent == null,
-                label = "Акцент по умолчанию",
+                label = s.wconfAccentDefault,
                 onClick = { onChange(config.copy(customAccent = null)) },
             )
             accentChoices.forEach { hex ->
                 AccentDot(
                     color = Color(android.graphics.Color.parseColor(hex)),
                     selected = selectedAccent == hex,
-                    label = "Акцент $hex",
+                    label = s.fill(s.wconfAccentHex, "hex" to hex),
                     onClick = { onChange(config.copy(customAccent = hex)) },
                 )
             }
         }
         LabeledSlider(
-            title = "Прозрачность",
+            title = s.wconfOpacity,
             valueLabel = "${(config.opacity * 100).roundToInt()}%",
             value = config.opacity,
             valueRange = 0f..1f,
@@ -553,7 +567,7 @@ private fun StyleSection(config: WidgetConfig, onChange: (WidgetConfig) -> Unit)
             },
         )
         LabeledSlider(
-            title = "Скругление",
+            title = s.wconfCornerRadius,
             valueLabel = "${config.cornerRadiusDp} dp",
             value = config.cornerRadiusDp.toFloat(),
             valueRange = 0f..24f,
@@ -562,7 +576,7 @@ private fun StyleSection(config: WidgetConfig, onChange: (WidgetConfig) -> Unit)
             },
         )
         LabeledSlider(
-            title = "Масштаб текста",
+            title = s.wconfFontScale,
             valueLabel = "${(config.fontScale * 100).roundToInt()}%",
             value = config.fontScale,
             valueRange = 0.85f..1.4f,
@@ -576,7 +590,7 @@ private fun StyleSection(config: WidgetConfig, onChange: (WidgetConfig) -> Unit)
                 onChange(config.copy(fontScale = snapped))
             },
         )
-        Text(text = "Плотность", style = AgType.body, color = colors.secondary)
+        Text(text = s.wconfDensity, style = AgType.body, color = colors.secondary)
         FlowRow(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(AgDim.ControlGap),
@@ -584,7 +598,7 @@ private fun StyleSection(config: WidgetConfig, onChange: (WidgetConfig) -> Unit)
         ) {
             WidgetDensity.all.forEach { density ->
                 SelectChip(
-                    label = densityLabel(density),
+                    label = densityLabel(density, s),
                     selected = config.density == density,
                     onClick = { onChange(config.copy(density = density)) },
                 )
@@ -788,12 +802,13 @@ private fun LabeledSlider(
 @Composable
 private fun ResetAction(onReset: () -> Unit) {
     val colors = AgTheme.colors
+    val s = LocalStrings.current
     var confirmReset by remember { mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxWidth()) {
         // Destructive action: never primary, visually separated from the save CTA.
         Spacer(Modifier.height(AgDim.ControlGap))
         AgGhostButton(
-            text = "Сбросить настройки",
+            text = s.wconfResetAction,
             onClick = { confirmReset = true },
             modifier = Modifier.fillMaxWidth(),
             contentColor = colors.rose,
@@ -806,10 +821,10 @@ private fun ResetAction(onReset: () -> Unit) {
             titleContentColor = colors.text,
             textContentColor = colors.secondary,
             shape = RoundedCornerShape(AgDim.PanelRadius),
-            title = { Text(text = "Сбросить настройки?", style = AgType.title) },
+            title = { Text(text = s.wconfResetTitle, style = AgType.title) },
             text = {
                 Text(
-                    text = "Тема, плотность и включённые блоки вернутся к 4×2 дашборду. Виджет на экране не удаляется.",
+                    text = s.wconfResetBody,
                     style = AgType.body,
                 )
             },
@@ -818,12 +833,12 @@ private fun ResetAction(onReset: () -> Unit) {
                     confirmReset = false
                     onReset()
                 }) {
-                    Text(text = "Сбросить", style = AgType.body, color = colors.rose)
+                    Text(text = s.commonReset, style = AgType.body, color = colors.rose)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { confirmReset = false }) {
-                    Text(text = "Отмена", style = AgType.body, color = colors.secondary)
+                    Text(text = s.commonCancel, style = AgType.body, color = colors.secondary)
                 }
             },
         )
@@ -834,14 +849,15 @@ private fun ResetAction(onReset: () -> Unit) {
 private fun JsonSection(config: WidgetConfig, onChange: (WidgetConfig) -> Unit) {
     val context = LocalContext.current
     val colors = AgTheme.colors
+    val s = LocalStrings.current
     var importOpen by remember { mutableStateOf(false) }
     var importText by remember { mutableStateOf("") }
     var importError by remember { mutableStateOf(false) }
 
-    ConfigSection(title = "Экспорт и импорт") {
+    ConfigSection(title = s.wconfExportImport) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AgDim.ControlGap)) {
             ChipButton(
-                text = "Экспорт JSON",
+                text = s.wconfExportJson,
                 modifier = Modifier.weight(1f),
                 onClick = {
                     val clipboard = context.getSystemService(ClipboardManager::class.java)
@@ -851,11 +867,11 @@ private fun JsonSection(config: WidgetConfig, onChange: (WidgetConfig) -> Unit) 
                             WidgetConfigCodec.exportJson(config),
                         ),
                     )
-                    Toast.makeText(context, "JSON скопирован", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, s.wconfJsonCopied, Toast.LENGTH_SHORT).show()
                 },
             )
             ChipButton(
-                text = "Импорт JSON",
+                text = s.wconfImportJson,
                 modifier = Modifier.weight(1f),
                 onClick = { importOpen = true },
             )
@@ -869,7 +885,7 @@ private fun JsonSection(config: WidgetConfig, onChange: (WidgetConfig) -> Unit) 
             titleContentColor = colors.text,
             textContentColor = colors.secondary,
             shape = RoundedCornerShape(AgDim.PanelRadius),
-            title = { Text(text = "Импорт JSON", style = AgType.title) },
+            title = { Text(text = s.wconfImportJson, style = AgType.title) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(AgDim.ControlGap)) {
                     OutlinedTextField(
@@ -883,7 +899,7 @@ private fun JsonSection(config: WidgetConfig, onChange: (WidgetConfig) -> Unit) 
                             .heightIn(min = 120.dp),
                         placeholder = {
                             Text(
-                                text = "{\"theme\": \"graphite\", \"opacity\": 0.95, …}",
+                                text = s.wconfImportPlaceholder,
                                 style = AgType.caption.copy(fontFamily = FontFamily.Monospace),
                                 color = colors.muted,
                             )
@@ -892,12 +908,12 @@ private fun JsonSection(config: WidgetConfig, onChange: (WidgetConfig) -> Unit) 
                         // has to be visible up front, so it lives in the hint line.
                         supportingText = {
                             Text(
-                                text = "Например: {\"theme\": \"paper\", \"opacity\": 0.95, \"density\": \"compact\"}",
+                                text = s.wconfImportHint,
                                 style = AgType.caption.copy(fontFamily = FontFamily.Monospace),
                                 color = colors.muted,
                             )
                         },
-                        label = { Text("Конфигурация", style = AgType.caption) },
+                        label = { Text(s.wconfConfigLabel, style = AgType.caption) },
                         textStyle = AgType.caption.copy(fontFamily = FontFamily.Monospace),
                         shape = RoundedCornerShape(AgDim.ControlRadius),
                         isError = importError,
@@ -915,7 +931,7 @@ private fun JsonSection(config: WidgetConfig, onChange: (WidgetConfig) -> Unit) 
                     )
                     if (importError) {
                         Text(
-                            text = "Некорректный JSON — конфигурация не изменена",
+                            text = s.wconfImportInvalid,
                             style = AgType.caption,
                             color = colors.rose,
                         )
@@ -940,12 +956,12 @@ private fun JsonSection(config: WidgetConfig, onChange: (WidgetConfig) -> Unit) 
                         contentColor = colors.onGlow,
                     ),
                 ) {
-                    Text(text = "Применить", style = AgType.body)
+                    Text(text = s.commonApply, style = AgType.body)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { importOpen = false }) {
-                    Text(text = "Отмена", style = AgType.body, color = colors.secondary)
+                    Text(text = s.commonCancel, style = AgType.body, color = colors.secondary)
                 }
             },
         )
@@ -987,11 +1003,11 @@ private fun WidgetConfig.moveBlock(from: Int, to: Int): WidgetConfig {
     return copy(blocks = reordered)
 }
 
-private fun blockTitle(id: WidgetBlockId): String = when (id) {
-    WidgetBlockId.HEADER -> "Шапка"
-    WidgetBlockId.CONTEXT -> "Контекст"
-    WidgetBlockId.QUOTAS -> "Лимиты"
-    WidgetBlockId.ZCODE -> "ZCode"
+private fun blockTitle(id: WidgetBlockId, s: AgStrings): String = when (id) {
+    WidgetBlockId.HEADER -> s.wconfBlockHeader
+    WidgetBlockId.CONTEXT -> s.labelContext
+    WidgetBlockId.QUOTAS -> s.labelLimits
+    WidgetBlockId.ZCODE -> s.labelZcode
 }
 
 /**
@@ -1010,20 +1026,30 @@ private fun chromeThemeMode(context: android.content.Context, config: WidgetConf
     }
 }
 
-private fun themeLabel(theme: String): String = when (theme) {
-    WidgetThemes.SYSTEM -> "Авто"
+private fun themeLabel(theme: String, s: AgStrings): String = when (theme) {
+    WidgetThemes.SYSTEM -> s.setThemeAuto
     WidgetThemes.GRAPHITE -> "Graphite"
     WidgetThemes.PAPER -> "Paper"
     WidgetThemes.OLED -> "OLED"
     WidgetThemes.GLASS -> "Glass"
     WidgetThemes.CLASSIC -> "Classic"
-    else -> "Авто"
+    else -> s.setThemeAuto
 }
 
-private fun densityLabel(density: WidgetDensity): String = when (density) {
-    WidgetDensity.COMPACT -> "Компакт"
-    WidgetDensity.COMFORTABLE -> "Обычно"
-    WidgetDensity.SPACIOUS -> "Простор"
+private fun densityLabel(density: WidgetDensity, s: AgStrings): String = when (density) {
+    WidgetDensity.COMPACT -> s.wconfDensityCompact
+    WidgetDensity.COMFORTABLE -> s.wconfDensityComfortable
+    WidgetDensity.SPACIOUS -> s.wconfDensitySpacious
+}
+
+/** Localised preset name; ids are stored in the widget config, labels are not. */
+private fun presetLabel(id: String, s: AgStrings): String = when (id) {
+    WidgetPresets.dashboard.id -> s.wconfPresetDashboard
+    WidgetPresets.classic.id -> s.wconfPresetClassic
+    WidgetPresets.contextCompact.id -> s.wconfPresetContext
+    WidgetPresets.detailed.id -> s.wconfPresetDetailed
+    WidgetPresets.zcodeOnly.id -> s.wconfPresetZcodeOnly
+    else -> s.wconfPresetCustom
 }
 
 private val accentChoices = listOf(

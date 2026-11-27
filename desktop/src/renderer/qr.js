@@ -19,6 +19,14 @@
 (function () {
   const MAX_VERSION = 10;
   const EC_LEVEL = 'M';
+  const i18n =
+    (typeof window !== 'undefined' && window.AGW && window.AGW.i18n) ||
+    (typeof require === 'function' ? require('../shared/i18n.js') : null);
+
+  /** Dictionary lookup with the RU default so the matrix maths stays pure. */
+  function tr(key, lang) {
+    return i18n && typeof i18n.t === 'function' ? i18n.t(key, null, lang) : key;
+  }
 
   /** Total codewords (data + error correction) per version, V1..V10. */
   const TOTAL_CODEWORDS = [26, 44, 70, 100, 134, 172, 196, 242, 292, 346];
@@ -161,19 +169,16 @@
 
   // --- data encoding -------------------------------------------------------
 
-  function chooseVersion(byteLength) {
+  function chooseVersion(byteLength, lang = 'ru') {
     for (let version = 1; version <= MAX_VERSION; version += 1) {
       const capacityBits = dataCodewordCount(version) * 8;
       const neededBits = 4 + characterCountBits(version) + byteLength * 8;
       if (neededBits <= capacityBits) return version;
     }
-    throw qrError(
-      'capacity',
-      'Текст слишком длинный для QR-кода: максимум 213 байт (версия 10, уровень M).',
-    );
+    throw qrError('capacity', tr('settings.qr.errorTooLong', lang));
   }
 
-  function buildDataCodewords(bytes, version) {
+  function buildDataCodewords(bytes, version, lang = 'ru') {
     const capacityBits = dataCodewordCount(version) * 8;
     const bits = [];
     pushBits(bits, MODE_BYTE, 4);
@@ -181,7 +186,7 @@
     for (let i = 0; i < bytes.length; i += 1) pushBits(bits, bytes[i], 8);
 
     if (bits.length > capacityBits) {
-      throw qrError('capacity', 'Текст не помещается в выбранную версию QR-кода.');
+      throw qrError('capacity', tr('settings.qr.errorDoesNotFit', lang));
     }
 
     // Terminator: up to four zero bits, then pad to a whole codeword.
@@ -507,14 +512,14 @@
 
   // --- public API ----------------------------------------------------------
 
-  function encodeQrMatrix(text) {
+  function encodeQrMatrix(text, lang = 'ru') {
     if (typeof text !== 'string' || text.length === 0) {
-      throw qrError('empty', 'Пустой текст: QR-код не строится.');
+      throw qrError('empty', tr('settings.qr.errorEmpty', lang));
     }
 
     const bytes = utf8Bytes(text);
-    const version = chooseVersion(bytes.length);
-    const dataCodewords = buildDataCodewords(bytes, version);
+    const version = chooseVersion(bytes.length, lang);
+    const dataCodewords = buildDataCodewords(bytes, version, lang);
     const ecPerBlock = EC_CODEWORDS_PER_BLOCK[version - 1];
     const numBlocks = NUM_BLOCKS[version - 1];
     const blocks = splitIntoBlocks(dataCodewords, version, ecPerBlock, numBlocks);
@@ -545,6 +550,7 @@
 
   function renderQrSvg(text, options) {
     const settings = options || {};
+    const lang = settings.lang === 'en' ? 'en' : 'ru';
     const quietZone = Number.isInteger(settings.quietZone) && settings.quietZone >= 0
       ? settings.quietZone
       : 4;
@@ -552,7 +558,7 @@
       ? settings.moduleSize
       : 1;
 
-    const qr = encodeQrMatrix(text);
+    const qr = encodeQrMatrix(text, lang);
     const dimension = qr.size + quietZone * 2;
     let path = '';
     for (let row = 0; row < qr.size; row += 1) {
@@ -566,7 +572,7 @@
 
     return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + dimension + ' ' + dimension
       + '" width="' + pixels + '" height="' + pixels
-      + '" role="img" aria-label="QR-код для сопряжения" shape-rendering="crispEdges">'
+      + '" role="img" aria-label="' + tr('settings.qr.imageAria', lang) + '" shape-rendering="crispEdges">'
       + '<rect width="' + dimension + '" height="' + dimension + '" fill="#ffffff"/>'
       + '<path fill="#000000" d="' + path + '"/>'
       + '</svg>';

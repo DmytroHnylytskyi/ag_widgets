@@ -7,15 +7,21 @@
 (function (root) {
   const AGW = (root.AGW = root.AGW || {});
   const format = AGW.format || (typeof require === 'function' ? require('./format.js') : null);
+  const i18n = AGW.i18n || (typeof require === 'function' ? require('../shared/i18n.js') : null);
   const { clamp, formatEndDate, formatUnits } = format;
 
-  const ERROR_REASONS = {
-    rate_limited: 'лимит запросов 429',
-    server_error: 'ошибка сервера',
-    api_changed: 'формат API изменился',
-    network: 'нет связи',
-    auth_expired: 'токен истёк',
-    parse_failed: 'не удалось разобрать ответ',
+  /** Dictionary lookup with the RU default so Node tests stay byte-identical. */
+  function tr(key, vars, lang) {
+    return i18n && typeof i18n.t === 'function' ? i18n.t(key, vars, lang) : key;
+  }
+
+  const ERROR_REASON_KEYS = {
+    rate_limited: 'dashboard.zcode.reason.rateLimited',
+    server_error: 'dashboard.zcode.reason.serverError',
+    api_changed: 'dashboard.zcode.reason.apiChanged',
+    network: 'dashboard.zcode.reason.network',
+    auth_expired: 'dashboard.zcode.reason.authExpired',
+    parse_failed: 'dashboard.zcode.reason.parseFailed',
   };
 
   let loginState = 'idle';
@@ -30,11 +36,11 @@
     return { state: loginState, message: loginMessage };
   }
 
-  function errorReason(zcode) {
+  function errorReason(zcode, lang = 'ru') {
     const kind = zcode && typeof zcode.error_kind === 'string' ? zcode.error_kind : '';
-    if (ERROR_REASONS[kind]) return ERROR_REASONS[kind];
-    if (zcode && zcode.network_error) return ERROR_REASONS.network;
-    return 'неизвестная ошибка';
+    if (ERROR_REASON_KEYS[kind]) return tr(ERROR_REASON_KEYS[kind], null, lang);
+    if (zcode && zcode.network_error) return tr(ERROR_REASON_KEYS.network, null, lang);
+    return tr('dashboard.zcode.reason.unknown', null, lang);
   }
 
   /** Classic keeps the author's wording; modern themes use sentence case. */
@@ -50,24 +56,30 @@
    * Word for the card top line. A failed probe must not report "Подключён"
    * next to "Ваучер не проверен" (D-12), while Classic keeps its 1:1 wording.
    */
-  function connectionLabel(zcode, classic) {
-    if (!zcode) return 'Нет данных';
-    if (zcode.method === 'disabled') return 'Отключён';
-    if (zcode.method !== 'api') return 'Нет данных';
-    if (classic) return 'Подключён';
-    if (zcode.auth_ok === false) return 'Токен истёк';
-    if (zcode.network_error || zcode.error_kind === 'network') return 'Нет сети';
-    if (zcode.error_kind) return 'Не проверен';
-    return 'Подключён';
+  function connectionLabel(zcode, classic, lang = 'ru') {
+    if (!zcode) return tr('dashboard.zcode.noData', null, lang);
+    if (zcode.method === 'disabled') return tr('dashboard.zcode.statusDisabled', null, lang);
+    if (zcode.method !== 'api') return tr('dashboard.zcode.noData', null, lang);
+    if (classic) return tr('dashboard.zcode.statusConnected', null, lang);
+    if (zcode.auth_ok === false) return tr('dashboard.zcode.statusExpired', null, lang);
+    if (zcode.network_error || zcode.error_kind === 'network') {
+      return tr('dashboard.zcode.statusOffline', null, lang);
+    }
+    if (zcode.error_kind) return tr('dashboard.zcode.statusUnverified', null, lang);
+    return tr('dashboard.zcode.statusConnected', null, lang);
   }
 
   /**
    * Tri-state coupon view per the PR #1 contract: "absent" is reported only
    * when the backend confirmed it, everything uncertain stays "unknown".
    */
-  function describeCoupon(zcode) {
+  function describeCoupon(zcode, lang = 'ru') {
     if (!zcode) {
-      return { state: 'unknown', text: 'Не удалось проверить ваучер: неизвестная ошибка', tone: 'warn' };
+      return {
+        state: 'unknown',
+        text: tr('dashboard.zcode.couponUnknownNoData', null, lang),
+        tone: 'warn',
+      };
     }
 
     let state;
@@ -86,16 +98,24 @@
       state = 'unknown';
     }
 
-    if (state === 'visible') return { state, text: 'Ваучер доступен', tone: 'ok' };
-    if (state === 'absent') return { state, text: 'Нет активных ваучеров', tone: 'idle' };
-    return { state: 'unknown', text: `Не удалось проверить ваучер: ${errorReason(zcode)}`, tone: 'warn' };
+    if (state === 'visible') {
+      return { state, text: tr('dashboard.zcode.couponVisibleText', null, lang), tone: 'ok' };
+    }
+    if (state === 'absent') {
+      return { state, text: tr('dashboard.zcode.couponAbsentText', null, lang), tone: 'idle' };
+    }
+    return {
+      state: 'unknown',
+      text: tr('dashboard.zcode.couponUnknownText', { reason: errorReason(zcode, lang) }, lang),
+      tone: 'warn',
+    };
   }
 
   /**
    * Balance view. `0 / 500M` must stay visible as an empty progress bar,
    * while a missing total only hides the ratio (percent stays `null`).
    */
-  function balanceInfo(zcode) {
+  function balanceInfo(zcode, lang = 'ru') {
     const remaining = zcode ? zcode.remaining_units : null;
     const total = zcode ? zcode.total_units : null;
     const hasTotal = Number.isFinite(total) && total > 0;
@@ -104,13 +124,20 @@
 
     let text = '';
     if (hasBalance) {
-      text = `Остаток: ${formatUnits(remaining)}${hasTotal ? ` / ${formatUnits(total)}` : ''}`;
+      text = hasTotal
+        ? tr(
+            'dashboard.zcode.balanceWithTotal',
+            { remaining: formatUnits(remaining), total: formatUnits(total) },
+            lang,
+          )
+        : tr('dashboard.zcode.balanceOnly', { remaining: formatUnits(remaining) }, lang);
     }
     return { hasBalance, hasTotal, percent, text };
   }
 
   function render(status, options = {}) {
     const opts = options && typeof options === 'object' && !Array.isArray(options) ? options : {};
+    const lang = opts.lang === 'en' ? 'en' : 'ru';
     const showBalanceBar = opts.show_balance_bar !== false;
     const title = document.getElementById('zcode-title');
     const material = document.getElementById('zcode-material');
@@ -138,8 +165,8 @@
       if (retryButton) {
         retryButton.classList.toggle('hidden', !visible);
         retryButton.title = visible
-          ? `Проверить ZCode ещё раз: ${errorReason(zcode)}`
-          : 'Проверить ZCode ещё раз';
+          ? tr('dashboard.zcode.retryTooltipReason', { reason: errorReason(zcode, lang) }, lang)
+          : tr('dashboard.zcode.retryTooltip', null, lang);
       }
       if (chip) chip.classList.toggle('hidden', visible);
     }
@@ -151,93 +178,102 @@
       loginButton.disabled = loginState === 'success';
       loginButton.textContent =
         loginState === 'pending'
-          ? 'Отменить вход'
+          ? tr('dashboard.zcode.cancelLogin', null, lang)
           : loginState === 'error'
-            ? 'Повторить вход'
-            : 'Войти в Z.ai';
+            ? tr('dashboard.zcode.retryLogin', null, lang)
+            : tr('dashboard.zcode.login', null, lang);
     }
 
     if (bar) bar.classList.add('hidden');
     if (barFill) barFill.style.width = '0%';
     if (subtitle) subtitle.title = '';
     if (title) {
-      title.textContent = planName ? `ZCode · ${planName}` : 'ZCode';
+      title.textContent = planName
+        ? tr('dashboard.zcode.planTitle', { plan: planName }, lang)
+        : tr('dashboard.zcode.defaultTitle', null, lang);
     }
     if (material) {
       // Modern themes hide `#zcode-title` (the card heading already says
       // "ZCode"), so the plan name has to ride along the status line or it is
       // lost entirely (D-06).
-      const statusWord = connectionLabel(zcode, classic);
-      material.textContent = !classic && planName ? `${statusWord} · ${planName}` : statusWord;
+      const statusWord = connectionLabel(zcode, classic, lang);
+      material.textContent = !classic && planName
+        ? tr('dashboard.zcode.materialWithPlan', { status: statusWord, plan: planName }, lang)
+        : statusWord;
     }
 
     if (loginState === 'pending') {
-      if (subtitle) subtitle.textContent = 'Открыл браузер · завершите вход в Z.ai…';
+      if (subtitle) subtitle.textContent = tr('dashboard.zcode.pendingSubtitle', null, lang);
       if (chip) {
         chip.className = 'zcode-chip chip-warn';
-        chip.textContent = 'Ожидание';
+        chip.textContent = tr('dashboard.zcode.pendingChip', null, lang);
       }
-      if (material) material.textContent = 'Вход';
+      if (material) material.textContent = tr('dashboard.zcode.materialSignIn', null, lang);
       setRetryVisible(false);
       return;
     }
 
     if (loginState === 'error') {
-      if (subtitle) subtitle.textContent = `Не удалось войти: ${loginMessage}`;
+      if (subtitle) {
+        subtitle.textContent = tr('dashboard.zcode.errorSubtitle', { message: loginMessage }, lang);
+      }
       if (chip) {
         chip.className = 'zcode-chip chip-error';
-        chip.textContent = 'Ошибка';
+        chip.textContent = tr('dashboard.zcode.errorChip', null, lang);
       }
-      if (material) material.textContent = 'Вход';
+      if (material) material.textContent = tr('dashboard.zcode.materialSignIn', null, lang);
       setRetryVisible(false);
       return;
     }
 
     if (loginState === 'success') {
-      if (subtitle) subtitle.textContent = loginMessage || 'Вход выполнен · обновляю баланс…';
+      if (subtitle) {
+        subtitle.textContent =
+          loginMessage || tr('dashboard.zcode.loginSuccessRefreshing', null, lang);
+      }
       if (chip) {
         chip.className = 'zcode-chip chip-available';
-        chip.textContent = 'Вход выполнен';
+        chip.textContent = tr('dashboard.zcode.signedIn', null, lang);
       }
-      if (material) material.textContent = 'Подключён';
+      if (material) material.textContent = tr('dashboard.zcode.statusConnected', null, lang);
       setRetryVisible(false);
       return;
     }
 
     if (!zcode) {
-      if (subtitle) subtitle.textContent = 'Ожидание проверки';
+      if (subtitle) subtitle.textContent = tr('dashboard.zcode.waitingCheck', null, lang);
       if (chip) {
         chip.className = 'zcode-chip chip-idle';
-        chip.textContent = 'Нет данных';
+        chip.textContent = tr('dashboard.zcode.noData', null, lang);
       }
       setRetryVisible(false);
       return;
     }
 
     if (zcode.method === 'disabled') {
-      if (subtitle) subtitle.textContent = 'Не подключён · войдите в Z.ai';
+      if (subtitle) subtitle.textContent = tr('dashboard.zcode.disabledSubtitle', null, lang);
       if (chip) {
         chip.className = 'zcode-chip chip-idle';
-        chip.textContent = 'Не подключён';
+        chip.textContent = tr('dashboard.zcode.disabledChip', null, lang);
       }
       setRetryVisible(false);
       return;
     }
 
     if (zcode.method === 'api' && zcode.auth_ok === false) {
-      if (subtitle) subtitle.textContent = 'Токен истёк · войдите снова';
+      if (subtitle) subtitle.textContent = tr('dashboard.zcode.expiredSubtitle', null, lang);
       if (chip) {
         chip.className = 'zcode-chip chip-warn';
-        chip.textContent = 'Нужен вход';
+        chip.textContent = tr('dashboard.zcode.loginRequiredChip', null, lang);
       }
       setRetryVisible(false);
       return;
     }
 
-    const coupon = describeCoupon(zcode);
-    const balance = balanceInfo(zcode);
+    const coupon = describeCoupon(zcode, lang);
+    const balance = balanceInfo(zcode, lang);
     const endsDate = formatEndDate(zcode.ends_at);
-    const endsText = endsDate ? ` · до ${endsDate}` : '';
+    const endsText = endsDate ? ` · ${tr('dashboard.zcode.endsAt', { date: endsDate }, lang)}` : '';
 
     if (bar && barFill && showBalanceBar && balance.percent !== null) {
       bar.classList.remove('hidden');
@@ -246,13 +282,17 @@
 
     let subtitleText;
     if (coupon.state === 'visible') {
-      subtitleText = balance.text ? `${balance.text}${endsText}` : 'Ваучер 300–500M · заберите в ZCode';
+      subtitleText = balance.text
+        ? `${balance.text}${endsText}`
+        : tr('dashboard.zcode.couponCta', null, lang);
     } else if (coupon.state === 'absent') {
       subtitleText = balance.text ? `${balance.text}${endsText}` : coupon.text;
     } else {
       // Short human status in the card; the technical reason stays in the
       // tooltip instead of pushing the balance out of two lines (S1-046).
-      subtitleText = balance.text ? `Ваучер не проверен · ${balance.text}` : 'Ваучер не проверен';
+      subtitleText = balance.text
+        ? tr('dashboard.zcode.unverifiedWithBalance', { balance: balance.text }, lang)
+        : tr('dashboard.zcode.unverified', null, lang);
     }
 
     if (subtitle) {
@@ -268,10 +308,10 @@
             : 'zcode-chip chip-warn';
       chip.textContent =
         coupon.state === 'visible'
-          ? 'Ваучер доступен'
+          ? tr('dashboard.zcode.couponVisibleText', null, lang)
           : coupon.state === 'absent'
-            ? 'Нет ваучера'
-            : 'Проверка не удалась';
+            ? tr('dashboard.zcode.chipAbsent', null, lang)
+            : tr('dashboard.zcode.chipCheckFailed', null, lang);
     }
     setRetryVisible(needsRetry);
   }

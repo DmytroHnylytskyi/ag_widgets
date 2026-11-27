@@ -1,5 +1,7 @@
 package dev.agwidgets.data
 
+import dev.agwidgets.ui.i18n.AgStrings
+import dev.agwidgets.ui.i18n.RuStrings
 import java.net.URI
 import java.net.URISyntaxException
 import java.net.URLDecoder
@@ -135,8 +137,14 @@ object E2eCrypto {
     /**
      * Authenticates and decrypts an envelope. Never throws: a wrong key, a
      * tampered payload or a malformed document becomes [Result.failure].
+     *
+     * [strings] defaults to Russian so the pre-i18n texts stay unchanged.
      */
-    fun decryptEnvelope(envelopeJson: String, keyB64: String): Result<String> = try {
+    fun decryptEnvelope(
+        envelopeJson: String,
+        keyB64: String,
+        strings: AgStrings = RuStrings,
+    ): Result<String> = try {
         val obj = JSONObject(envelopeJson)
         val version = obj.opt("v")
         val alg = obj.optString("alg", "")
@@ -145,23 +153,23 @@ object E2eCrypto {
 
         when {
             version !is Number || version.toDouble() != ENVELOPE_VERSION.toDouble() ->
-                decryptFailure("Неподдерживаемая версия E2E-сообщения")
+                decryptFailure(strings.e2eUnsupportedVersion)
             alg != ENVELOPE_ALG ->
-                decryptFailure("Неподдерживаемый алгоритм E2E-сообщения")
+                decryptFailure(strings.e2eUnsupportedAlg)
             ivRaw !is String || ctRaw !is String ->
-                decryptFailure("Некорректный E2E-конверт")
+                decryptFailure(strings.e2eInvalidEnvelope)
             else -> {
                 val iv = decodeBase64Url(ivRaw)
                 val payload = decodeBase64Url(ctRaw)
                 val key = decodeKey(keyB64)
                 if (iv == null || payload == null) {
-                    decryptFailure("Некорректный E2E-конверт")
+                    decryptFailure(strings.e2eInvalidEnvelope)
                 } else if (iv.size != IV_BYTES) {
-                    decryptFailure("Некорректная длина IV E2E-сообщения")
+                    decryptFailure(strings.e2eInvalidIv)
                 } else if (payload.size < TAG_BYTES) {
-                    decryptFailure("Слишком короткое E2E-сообщение")
+                    decryptFailure(strings.e2eTooShort)
                 } else if (key == null) {
-                    decryptFailure("Некорректный E2E-ключ")
+                    decryptFailure(strings.e2eInvalidKey)
                 } else {
                     val cipher = Cipher.getInstance(TRANSFORMATION)
                     cipher.init(
@@ -177,7 +185,7 @@ object E2eCrypto {
     } catch (e: Exception) {
         // AEADBadTagException, GeneralSecurityException, IllegalArgumentException,
         // JSONException: all of them mean "this message cannot be trusted".
-        Result.failure(IllegalStateException("Не удалось расшифровать E2E-сообщение", e))
+        Result.failure(IllegalStateException(strings.e2eDecryptFailed, e))
     }
 
     // ------------------------------------------------------------------
@@ -284,25 +292,26 @@ object E2eCrypto {
      * Parses `agw://pair?v=1&t=<topic>[&s=<server>][&k=<key>]`.
      *
      * Unknown query parameters are ignored; duplicated or malformed known ones
-     * are rejected. Never throws.
+     * are rejected. Never throws. [strings] defaults to Russian so the pre-i18n
+     * texts stay unchanged.
      */
-    fun parsePairingUri(uri: String): Result<PairingConfig> {
+    fun parsePairingUri(uri: String, strings: AgStrings = RuStrings): Result<PairingConfig> {
         val value = uri.trim()
-        if (value.isEmpty()) return pairingFailure("Пустая ссылка сопряжения")
+        if (value.isEmpty()) return pairingFailure(strings.e2eEmptyPairingLink)
 
         val parsed = try {
             URI(value)
         } catch (_: URISyntaxException) {
-            return pairingFailure("Некорректная ссылка сопряжения")
+            return pairingFailure(strings.e2eInvalidPairingLink)
         }
         if (!parsed.scheme.equals(PAIRING_SCHEME, ignoreCase = true)) {
-            return pairingFailure("Ссылка должна использовать схему agw")
+            return pairingFailure(strings.e2eSchemeRequired)
         }
         if (!parsed.host.equals(PAIRING_HOST, ignoreCase = true)) {
-            return pairingFailure("Ссылка должна указывать на agw://pair")
+            return pairingFailure(strings.e2ePairHostRequired)
         }
         val path = parsed.path ?: ""
-        if (path != "" && path != "/") return pairingFailure("Ссылка не должна содержать путь")
+        if (path != "" && path != "/") return pairingFailure(strings.e2eNoPath)
 
         val collected = LinkedHashMap<String, String>()
         val rawQuery = parsed.rawQuery
@@ -312,33 +321,35 @@ object E2eCrypto {
                 val separator = pair.indexOf('=')
                 val rawKey = if (separator >= 0) pair.substring(0, separator) else pair
                 val rawValue = if (separator >= 0) pair.substring(separator + 1) else ""
-                val key = decodeQueryComponent(rawKey) ?: return pairingFailure("Некорректный параметр ссылки")
+                val key = decodeQueryComponent(rawKey) ?: return pairingFailure(strings.e2eInvalidParam)
                 if (key !in KNOWN_PARAMS) continue
-                if (collected.containsKey(key)) return pairingFailure("Повторяющийся параметр $key")
+                if (collected.containsKey(key)) {
+                    return pairingFailure(strings.fill(strings.e2eDuplicateParam, "key" to key))
+                }
                 collected[key] = decodeQueryComponent(rawValue)
-                    ?: return pairingFailure("Некорректный параметр ссылки")
+                    ?: return pairingFailure(strings.e2eInvalidParam)
             }
         }
 
         if (collected["v"] != ENVELOPE_VERSION.toString()) {
-            return pairingFailure("Неподдерживаемая версия ссылки сопряжения")
+            return pairingFailure(strings.e2eUnsupportedPairingVersion)
         }
         val topic = collected["t"]?.trim()
         if (topic.isNullOrEmpty() || !TOPIC_PATTERN.matches(topic)) {
-            return pairingFailure("Некорректный топик ntfy")
+            return pairingFailure(strings.e2eInvalidTopic)
         }
 
         val server = if ("s" in collected) {
-            normalizeNtfyServer(collected["s"]) ?: return pairingFailure("Некорректный сервер ntfy")
+            normalizeNtfyServer(collected["s"]) ?: return pairingFailure(strings.e2eInvalidServer)
         } else {
             DEFAULT_NTFY_SERVER
         }
 
         val e2eKey = if ("k" in collected) {
             val raw = collected["k"]
-            if (raw.isNullOrBlank()) return pairingFailure("Пустой E2E-ключ")
+            if (raw.isNullOrBlank()) return pairingFailure(strings.e2eEmptyKey)
             val trimmed = raw.trim()
-            if (!isValidKey(trimmed)) return pairingFailure("Некорректный E2E-ключ")
+            if (!isValidKey(trimmed)) return pairingFailure(strings.e2eInvalidKey)
             trimmed
         } else {
             null

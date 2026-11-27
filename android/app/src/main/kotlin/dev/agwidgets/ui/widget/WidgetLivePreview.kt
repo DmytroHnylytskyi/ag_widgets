@@ -57,6 +57,8 @@ import dev.agwidgets.ui.formatCountdownShort
 import dev.agwidgets.ui.formatK
 import dev.agwidgets.ui.formatUnits
 import dev.agwidgets.ui.formatWindow
+import dev.agwidgets.ui.i18n.AgStrings
+import dev.agwidgets.ui.i18n.LocalStrings
 import dev.agwidgets.ui.parseInstant
 import dev.agwidgets.ui.prettyModel
 import dev.agwidgets.ui.theme.AgColors
@@ -92,6 +94,7 @@ import kotlin.math.roundToInt
 @Composable
 fun WidgetLivePreview(config: WidgetConfig, modifier: Modifier = Modifier) {
     val context = LocalContext.current
+    val s = LocalStrings.current
     val colors = remember(context, config.theme) {
         agColorsFor(WidgetConfigStore.resolveWidgetTheme(context, config))
     }
@@ -99,7 +102,7 @@ fun WidgetLivePreview(config: WidgetConfig, modifier: Modifier = Modifier) {
     val glow = customAccent ?: colors.glow
     val violet = customAccent ?: colors.violet
     val status = remember(context) { StatusStore.getMergedStatus(context) }
-    val state = remember(status) { buildPreviewState(status) }
+    val state = remember(status, s) { buildPreviewState(status, s) }
     val scale = config.fontScale.coerceIn(0.85f, 1.4f)
     // Every `sp` in the preview also follows the system font scale. Planning the
     // fit against `config.fontScale` alone is what cut the lower quota row at
@@ -382,7 +385,7 @@ private fun fitBlocks(
 
 @Composable
 private fun HiddenBadge(hidden: Int, colors: AgColors, modifier: Modifier = Modifier) {
-    val nouns = if (hidden == 1) "блок не помещается" else "блока не помещается"
+    val s = LocalStrings.current
     Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
         val shape = RoundedCornerShape(AgDim.ChipRadius)
         Box(
@@ -393,7 +396,11 @@ private fun HiddenBadge(hidden: Int, colors: AgColors, modifier: Modifier = Modi
                 .padding(horizontal = 8.dp, vertical = 3.dp),
         ) {
             Text(
-                text = "+$hidden $nouns в этой сетке",
+                text = if (hidden == 1) {
+                    s.fill(s.wprevHiddenOne, "count" to hidden)
+                } else {
+                    s.fill(s.wprevHiddenMany, "count" to hidden)
+                },
                 style = AgTypeScale.caption,
                 color = colors.secondary,
                 maxLines = 1,
@@ -414,6 +421,7 @@ private object AgTypeScale {
 
 @Composable
 private fun PreviewHeader(colors: AgColors, glow: Color, state: PreviewState, scale: Float) {
+    val s = LocalStrings.current
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Box(
             modifier = Modifier
@@ -424,7 +432,7 @@ private fun PreviewHeader(colors: AgColors, glow: Color, state: PreviewState, sc
         Spacer(Modifier.width(4.dp))
         if (colors.isClassic) {
             Text(
-                text = "AGW / 01",
+                text = s.brandAgw01,
                 fontFamily = FontFamily.Monospace,
                 fontSize = scaled(8f, scale),
                 color = glow,
@@ -433,7 +441,7 @@ private fun PreviewHeader(colors: AgColors, glow: Color, state: PreviewState, sc
             Spacer(Modifier.width(6.dp))
         }
         Text(
-            text = "AG Widgets",
+            text = s.brandWidgets,
             fontSize = scaled(11f, scale),
             fontWeight = FontWeight.Bold,
             color = colors.text,
@@ -478,7 +486,7 @@ private fun PreviewContext(
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = "Контекст",
+                text = LocalStrings.current.labelContext,
                 fontSize = scaled(7.5f, scale),
                 color = colors.muted,
                 maxLines = 1,
@@ -786,27 +794,27 @@ private data class PreviewState(
 )
 
 /** Shown when the phone has no cached status yet. */
-private val demoPreview = PreviewState(
+private fun demoPreview(s: AgStrings) = PreviewState(
     time = "12:40",
     model = "Gemini 4",
     usage = "312K / 512K (61%)",
     contextPct = 61,
     contextLevel = "yellow",
     gemini = listOf(
-        PreviewQuota("Gemini 5 ч", 74, "2ч 40м"),
-        PreviewQuota("Gemini 7 дн", 82, "4д 2ч"),
+        PreviewQuota(s.wprevGemini5h, 74, s.wprevDemoCountdown1),
+        PreviewQuota(s.wprevGeminiWeekly, 82, s.wprevDemoCountdown2),
     ),
     thirdParty = listOf(
-        PreviewQuota("Claude / GPT 5 ч", 41, "1ч 15м"),
-        PreviewQuota("Claude / GPT 7 дн", 63, "3д 8ч"),
+        PreviewQuota(s.wprevThird5h, 41, s.wprevDemoCountdown3),
+        PreviewQuota(s.wprevThirdWeekly, 63, s.wprevDemoCountdown4),
     ),
     zcodeLabel = "GLM 320M",
     zcodeTone = "glow",
     zcodeFraction = 0.64f,
 )
 
-private fun buildPreviewState(status: AgStatus?): PreviewState {
-    if (status == null) return demoPreview
+private fun buildPreviewState(status: AgStatus?, s: AgStrings): PreviewState {
+    if (status == null) return demoPreview(s)
     val ctx = status.contextSummary
     val tokens = ctx?.tokens
     val window = ctx?.window?.takeIf { it > 0 }
@@ -838,25 +846,30 @@ private fun buildPreviewState(status: AgStatus?): PreviewState {
         contextPct = pct?.roundToInt(),
         contextLevel = contextLevel(pct, ctx?.level, ctx?.yellowPct, ctx?.redPct),
         gemini = listOf(
-            quotaPreview("Gemini 5 ч", fiveHour, now),
-            quotaPreview("Gemini 7 дн", weekly, now),
+            quotaPreview(s.wprevGemini5h, fiveHour, now, s),
+            quotaPreview(s.wprevGeminiWeekly, weekly, now, s),
         ),
         thirdParty = listOf(
-            quotaPreview("Claude / GPT 5 ч", thirdFiveHour, now),
-            quotaPreview("Claude / GPT 7 дн", thirdWeekly, now),
+            quotaPreview(s.wprevThird5h, thirdFiveHour, now, s),
+            quotaPreview(s.wprevThirdWeekly, thirdWeekly, now, s),
         ),
-        zcodeLabel = zcodeLabel(status.zcode),
+        zcodeLabel = zcodeLabel(status.zcode, s),
         zcodeTone = zcodeTone(status.zcode),
         zcodeFraction = zcodeFraction(status.zcode),
     )
 }
 
-private fun quotaPreview(label: String, bucket: QuotaBucket?, now: Long): PreviewQuota {
+private fun quotaPreview(
+    label: String,
+    bucket: QuotaBucket?,
+    now: Long,
+    s: AgStrings,
+): PreviewQuota {
     val fraction = bucket?.remainingFraction?.takeIf { it.isFinite() }?.coerceIn(0.0, 1.0)
     return PreviewQuota(
         label = label,
         pct = fraction?.let { (it * 100).roundToInt() },
-        reset = formatCountdownShort(bucket?.resetTime, now)?.takeIf { it != "—" },
+        reset = formatCountdownShort(bucket?.resetTime, now, s)?.takeIf { it != "—" },
     )
 }
 
@@ -864,21 +877,25 @@ private fun quotaPreview(label: String, bucket: QuotaBucket?, now: Long): Previe
  * Same four-state vocabulary as the Glance chip, so the builder never promises a
  * label the home screen will not draw.
  */
-private fun zcodeLabel(zcode: ZCodeStatus?): String {
-    if (zcode == null) return "ZCode: нет данных"
+private fun zcodeLabel(zcode: ZCodeStatus?, s: AgStrings): String {
+    if (zcode == null) return s.statusZcodeNoData
     val remaining = zcode.remainingUnits
     return when {
         zcode.isCouponUnknown -> when (zcode.errorKind) {
-            "auth_expired" -> "ZCode: нужен вход"
-            "network" -> "ZCode: нет связи"
-            else -> "ZCode: ошибка проверки"
+            "auth_expired" -> s.statusZcodeSignIn
+            "network" -> s.statusZcodeNoConnection
+            else -> s.statusZcodeCheckFailed
         }
-        zcode.networkError -> "ZCode: нет связи"
-        zcode.method == "disabled" -> "ZCode: не подключён"
-        zcode.isCouponVisible -> "ZCode: ваучер доступен"
+        zcode.networkError -> s.statusZcodeNoConnection
+        zcode.method == "disabled" -> s.statusZcodeNotConnected
+        zcode.isCouponVisible -> s.statusZcodeCouponAvailable
         remaining != null && (remaining > 0 || (zcode.totalUnits ?: 0L) > 0L) ->
-            "${zcode.planName.ifBlank { "ZCode" }} ${formatUnits(remaining)}"
-        else -> "ZCode: нет ваучера"
+            s.fill(
+                s.statusZcodeBalance,
+                "plan" to zcode.planName.ifBlank { s.labelZcode },
+                "amount" to formatUnits(remaining),
+            )
+        else -> s.statusZcodeNoCoupon
     }
 }
 

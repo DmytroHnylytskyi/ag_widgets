@@ -19,13 +19,43 @@
   const DENSITIES = ['compact', 'comfortable', 'spacious'];
   const MODES = ['full', 'compact', 'minibar', 'pill'];
   const PRESETS = ['full', 'compact', 'minibar', 'pill', 'paper', 'classic'];
+  const LANGUAGES = ['auto', 'ru', 'en'];
   const BLOCK_IDS = ['context_hero', 'quotas_grid', 'zcode_card'];
+  const BLOCK_NAME_KEYS = {
+    context_hero: 'block.context',
+    quotas_grid: 'block.quotas',
+    zcode_card: 'block.zcode',
+  };
   const BLOCK_OPTION_DEFAULTS = {
     context_hero: { show_recent: true, recent_count: 3, show_thresholds: true },
     quotas_grid: { show_gemini: true, show_3p: true, show_countdown: true },
     zcode_card: { show_balance_bar: true },
   };
   const ACCENTS = ['#60a5fa', '#34d399', '#a78bfa', '#f59e0b', '#f43f5e', '#38bdf8'];
+
+  /** JSON import errors: `reason` first, then `code`, then the raw message. */
+  const JSON_REASON_KEYS = {
+    not_string: 'settings.errors.expectedString',
+    empty: 'settings.errors.emptyJson',
+    too_large: 'settings.errors.tooLarge',
+    invalid_json: 'settings.errors.invalidJson',
+    root_not_object: 'settings.errors.rootNotObject',
+    save_failed: 'settings.errors.saveFailed',
+  };
+  const JSON_CODE_KEYS = {
+    invalid: 'settings.json.invalid',
+    too_large: 'settings.errors.tooLarge',
+  };
+
+  const i18n = window.AGW && window.AGW.i18n ? window.AGW.i18n : null;
+  /** Resolved UI language; Russian until the first settings snapshot. */
+  let currentLang = 'ru';
+  /** Selected language mode (`auto` | `ru` | `en`) for the segmented control. */
+  let currentLanguageMode = 'auto';
+
+  function t(key, vars) {
+    return i18n ? i18n.t(key, vars, currentLang) : key;
+  }
 
   const DEFAULT_ACCENT = '#60a5fa';
   const DEFAULT_THEME = 'system';
@@ -69,6 +99,7 @@
     corner: byId('corner-radius'),
     cornerBadge: byId('corner-radius-value'),
     densities: queryAll('[data-density]'),
+    languageButtons: queryAll('[data-language]'),
     modes: queryAll('[data-mode]'),
     blockList: byId('block-list'),
     recentCount: byId('recent-count'),
@@ -124,6 +155,11 @@
   let rotateArmed = false;
   let rotateTimer = null;
   let syncEventsBound = false;
+  let lastError = null;
+  let lastJsonStatus = null;
+  let lastSyncStatus = null;
+  let lastNotifStatus = null;
+  let lastServerErrorKey = null;
 
   // --- small helpers -------------------------------------------------------
 
@@ -140,7 +176,7 @@
       try {
         return fn(event);
       } catch (error) {
-        showError('Не удалось применить настройку.');
+        showError('settings.errors.applyFailed');
         return undefined;
       }
     };
@@ -350,6 +386,7 @@
   };
   const NOTIF_STATUS_MS = 4000;
   let notifStatusTimer = null;
+  let notifStatusIsError = false;
 
   function normalizeNotifications(raw) {
     const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
@@ -360,14 +397,22 @@
     return next;
   }
 
-  function setNotifStatus(message, isError) {
+  function renderNotifStatus() {
     if (!el.notifStatus) return;
-    el.notifStatus.textContent = message || '';
-    el.notifStatus.classList.toggle('is-error', Boolean(isError));
+    el.notifStatus.textContent = lastNotifStatus ? t(lastNotifStatus) : '';
+    el.notifStatus.classList.toggle('is-error', Boolean(lastNotifStatus && notifStatusIsError));
+  }
+
+  function setNotifStatus(key, isError) {
+    lastNotifStatus = key || null;
+    notifStatusIsError = Boolean(isError);
+    if (!el.notifStatus) return;
+    renderNotifStatus();
     if (notifStatusTimer) clearTimeout(notifStatusTimer);
-    if (!message) return;
+    if (!lastNotifStatus) return;
     notifStatusTimer = setTimeout(function () {
       notifStatusTimer = null;
+      lastNotifStatus = null;
       if (el.notifStatus) {
         el.notifStatus.textContent = '';
         el.notifStatus.classList.remove('is-error');
@@ -405,26 +450,26 @@
     const prefs = normalizeNotifications(state.notifications);
     if (!prefs.enabled) return;
     if (!hasBridge() || typeof bridge.testNotification !== 'function') {
-      setNotifStatus('Проверка доступна только в приложении.', true);
+      setNotifStatus('settings.notif.status.bridgeOnly', true);
       return;
     }
-    setNotifStatus('Отправляем…', false);
+    setNotifStatus('settings.notif.status.testing', false);
     Promise.resolve()
       .then(function () {
         return bridge.testNotification();
       })
       .then(function (result) {
         if (result && result.ok) {
-          setNotifStatus('Уведомление отправлено.', false);
+          setNotifStatus('settings.notif.status.sent', false);
           return;
         }
         if (result && result.supported === false) {
-          setNotifStatus('Windows не поддерживает уведомления.', true);
+          setNotifStatus('settings.notif.status.unsupported', true);
           return;
         }
-        setNotifStatus('Не удалось отправить уведомление.', true);
+        setNotifStatus('settings.notif.status.failed', true);
       }, function () {
-        setNotifStatus('Не удалось отправить уведомление.', true);
+        setNotifStatus('settings.notif.status.failed', true);
       });
   }
 
@@ -441,7 +486,9 @@
       el.accentHex.value = accent || '';
       el.accentHex.setAttribute('aria-invalid', 'false');
     }
-    if (el.accentBadge) el.accentBadge.textContent = accent || 'авто';
+    if (el.accentBadge) {
+      el.accentBadge.textContent = accent || t('settings.appearance.accentAuto');
+    }
   }
 
   function selectDensity(density) {
@@ -457,6 +504,32 @@
       const active = button.getAttribute('data-mode') === mode;
       button.classList.toggle('is-active', active);
       button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  }
+
+  /** Language segmented control: exactly one mode is pressed. */
+  function selectLanguage(mode) {
+    const value = LANGUAGES.indexOf(mode) === -1 ? 'auto' : mode;
+    el.languageButtons.forEach(function (button) {
+      const active = button.getAttribute('data-language') === value;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  }
+
+  /** `{name}`-labelled aria texts for the builder block cards. */
+  function localizeBlockCards() {
+    const list = el.blockList;
+    if (!list) return;
+    Array.prototype.forEach.call(list.querySelectorAll('.block-card'), function (card) {
+      const nameKey = BLOCK_NAME_KEYS[card.getAttribute('data-block')];
+      const name = nameKey ? t(nameKey) : '';
+      const up = card.querySelector('.block-up');
+      const down = card.querySelector('.block-down');
+      const toggle = card.querySelector('[data-block-toggle]');
+      if (up) up.setAttribute('aria-label', t('block.moveUp', { name: name }));
+      if (down) down.setAttribute('aria-label', t('block.moveDown', { name: name }));
+      if (toggle) toggle.setAttribute('aria-label', t('block.showBlock', { name: name }));
     });
   }
 
@@ -525,8 +598,52 @@
     });
   }
 
+  /**
+   * Resolve and apply the interface language from a settings snapshot without
+   * a reload. `language` is the mode, `resolvedLanguage` the concrete locale;
+   * both may be missing in older snapshots.
+   */
+  function setLanguage(snapshot) {
+    if (!i18n) return;
+    const mode = snapshot && snapshot.language;
+    const resolved = snapshot && snapshot.resolvedLanguage;
+    if (typeof mode === 'string') currentLanguageMode = i18n.normalizeLanguage(mode);
+    currentLang =
+      resolved === 'ru' || resolved === 'en'
+        ? resolved
+        : i18n.resolveLanguage(mode || currentLanguageMode, navigator.language);
+    i18n.applyDomTranslations(document, currentLang);
+    renderDynamicTexts();
+  }
+
+  /** Repaint every text that JS owns after a language change. */
+  function renderDynamicTexts() {
+    selectLanguage(currentLanguageMode);
+    renderJsonStatus();
+    renderSyncStatus();
+    renderNotifStatus();
+    paintServerError();
+    paintError();
+    if (state.appearance) renderAccent(state.appearance.custom_accent);
+    localizeBlockCards();
+    if (el.syncE2eRotate) {
+      el.syncE2eRotate.textContent = rotateArmed ? rotateConfirmLabel() : rotateLabel();
+    }
+    if (el.reset) {
+      el.reset.textContent = el.reset.classList.contains('is-confirming')
+        ? t('settings.footer.resetConfirm')
+        : t('settings.footer.reset');
+    }
+    if (pairing) {
+      setSyncBadge(pairing.e2e_enabled);
+      updateE2eHint(pairing.e2e_enabled);
+      if (el.syncQrWrap && !el.syncQrWrap.classList.contains('hidden')) refreshQr();
+    }
+  }
+
   function render(snapshot) {
     if (!looksLikeSnapshot(snapshot)) return;
+    setLanguage(snapshot);
     const appearance = snapshot.appearance;
 
     state.appearance = appearance;
@@ -608,25 +725,66 @@
 
   // --- status + errors -----------------------------------------------------
 
-  function showError(message) {
+  function paintError() {
     if (!el.error) return;
+    const message = !lastError
+      ? ''
+      : lastError.raw !== null && lastError.raw !== undefined
+        ? String(lastError.raw)
+        : t(lastError.key);
     el.error.textContent = message;
-    el.error.classList.remove('hidden');
+    el.error.classList.toggle('hidden', !message);
+  }
+
+  function armErrorTimer() {
     if (errorTimer) clearTimeout(errorTimer);
     errorTimer = setTimeout(function () {
       errorTimer = null;
-      el.error.classList.add('hidden');
+      lastError = null;
+      if (el.error) el.error.classList.add('hidden');
     }, 4000);
   }
 
-  function setJsonStatus(message, isError) {
+  /** Show a localized settings error by dictionary key. */
+  function showError(key) {
+    lastError = { key: key, raw: null };
+    paintError();
+    armErrorTimer();
+  }
+
+  /** Show a message that came from the main process as-is. */
+  function showErrorRaw(message) {
+    lastError = { key: null, raw: message };
+    paintError();
+    armErrorTimer();
+  }
+
+  function renderJsonStatus() {
     if (!el.jsonStatus) return;
-    el.jsonStatus.textContent = message || '';
-    el.jsonStatus.classList.toggle('is-error', Boolean(isError));
-    el.jsonStatus.classList.toggle('is-ok', Boolean(message) && !isError);
+    const text = !lastJsonStatus
+      ? ''
+      : lastJsonStatus.raw !== null && lastJsonStatus.raw !== undefined
+        ? String(lastJsonStatus.raw)
+        : t(lastJsonStatus.key, lastJsonStatus.vars);
+    const isError = Boolean(lastJsonStatus && lastJsonStatus.isError);
+    el.jsonStatus.textContent = text;
+    el.jsonStatus.classList.toggle('is-error', Boolean(text) && isError);
+    el.jsonStatus.classList.toggle('is-ok', Boolean(text) && !isError);
     if (el.importArea) {
       el.importArea.setAttribute('aria-invalid', isError ? 'true' : 'false');
     }
+  }
+
+  function setJsonStatus(key, isError) {
+    lastJsonStatus = key ? { key: key, vars: null, raw: null, isError: Boolean(isError) } : null;
+    renderJsonStatus();
+  }
+
+  function setJsonStatusRaw(text, isError) {
+    lastJsonStatus = text
+      ? { key: null, vars: null, raw: text, isError: Boolean(isError) }
+      : null;
+    renderJsonStatus();
   }
 
   /**
@@ -667,10 +825,10 @@
       })
       .then(function (snapshot) {
         if (looksLikeSnapshot(snapshot)) render(snapshot);
-        else if (snapshot && snapshot.ok === false) showError('Настройка не применилась.');
+        else if (snapshot && snapshot.ok === false) showError('settings.errors.applyRejected');
       })
       .catch(function () {
-        showError('Не удалось применить настройку.');
+        showError('settings.errors.applyFailed');
       });
   }
 
@@ -698,12 +856,15 @@
   // --- sync tab ------------------------------------------------------------
 
   const HTTPS_SERVER_PATTERN = /^https:\/\/[^\s/?#@]+(\/[^\s?#@]*)?$/i;
-  const SERVER_ERROR_MESSAGE = 'Адрес должен начинаться с https:// и не содержать @, ? или #.';
   const ROTATE_CONFIRM_MS = 6000;
-  const ROTATE_LABEL = 'Сменить ключ';
-  const ROTATE_CONFIRM_LABEL = 'Подтвердить смену ключа';
-  const E2E_HINT_ON = 'Ключ хранится на этом устройстве и передаётся телефону через QR-код. При смене ключа телефон нужно переподключить.';
-  const E2E_HINT_OFF = 'Без E2E сообщения идут через сервер ntfy в открытом виде. Включите шифрование перед сопряжением.';
+
+  function rotateLabel() {
+    return t('settings.e2e.rotate');
+  }
+
+  function rotateConfirmLabel() {
+    return t('settings.e2e.rotateConfirm');
+  }
 
   let pairingRequest = null;
 
@@ -713,33 +874,57 @@
       && typeof bridge.updatePairing === 'function';
   }
 
-  function setSyncStatus(message, isError) {
+  function renderSyncStatus() {
     if (!el.syncStatus) return;
-    const text = message || '';
+    const text = !lastSyncStatus
+      ? ''
+      : lastSyncStatus.raw !== null && lastSyncStatus.raw !== undefined
+        ? String(lastSyncStatus.raw)
+        : t(lastSyncStatus.key, lastSyncStatus.vars);
+    const isError = Boolean(lastSyncStatus && lastSyncStatus.isError);
     el.syncStatus.textContent = text;
     el.syncStatus.classList.toggle('hidden', !text);
-    el.syncStatus.classList.toggle('is-error', Boolean(text) && Boolean(isError));
+    el.syncStatus.classList.toggle('is-error', Boolean(text) && isError);
     el.syncStatus.classList.toggle('is-ok', Boolean(text) && !isError);
+  }
+
+  function setSyncStatus(key, isError) {
+    lastSyncStatus = key ? { key: key, vars: null, raw: null, isError: Boolean(isError) } : null;
+    renderSyncStatus();
+  }
+
+  function setSyncStatusRaw(text, isError) {
+    lastSyncStatus = text ? { key: null, vars: null, raw: text, isError: Boolean(isError) } : null;
+    renderSyncStatus();
   }
 
   function setSyncBadge(enabled) {
     if (!el.syncQrBadge) return;
-    el.syncQrBadge.textContent = enabled ? 'E2E вкл' : 'Без E2E';
+    el.syncQrBadge.textContent = enabled
+      ? t('settings.qr.badgeOn')
+      : t('settings.qr.badgeOff');
     el.syncQrBadge.classList.toggle('is-on', Boolean(enabled));
   }
 
   function updateE2eHint(enabled) {
-    if (el.syncE2eHint) el.syncE2eHint.textContent = enabled ? E2E_HINT_ON : E2E_HINT_OFF;
+    if (el.syncE2eHint) {
+      el.syncE2eHint.textContent = t(enabled ? 'settings.e2e.hintOn' : 'settings.e2e.hintOff');
+    }
   }
 
-  function setServerError(message) {
-    if (el.syncServerError) {
-      el.syncServerError.textContent = message || '';
-      el.syncServerError.classList.toggle('hidden', !message);
-    }
+  function paintServerError() {
+    if (!el.syncServerError) return;
+    const message = lastServerErrorKey ? t(lastServerErrorKey) : '';
+    el.syncServerError.textContent = message;
+    el.syncServerError.classList.toggle('hidden', !message);
     if (el.syncServerInput) {
       el.syncServerInput.setAttribute('aria-invalid', message ? 'true' : 'false');
     }
+  }
+
+  function setServerError(key) {
+    lastServerErrorKey = key || null;
+    paintServerError();
   }
 
   function isValidServerUrl(value) {
@@ -753,13 +938,13 @@
 
     const generator = window.AGW && window.AGW.qr;
     if (!generator || typeof generator.renderQrSvg !== 'function') {
-      setSyncStatus('QR-генератор недоступен.', true);
+      setSyncStatus('settings.qr.generatorUnavailable', true);
       return;
     }
 
     if (el.syncUri) el.syncUri.textContent = pairing.uri;
     try {
-      const svg = generator.renderQrSvg(pairing.uri, { quietZone: 4 });
+      const svg = generator.renderQrSvg(pairing.uri, { quietZone: 4, lang: currentLang });
       if (el.syncQrSvg) {
         el.syncQrSvg.innerHTML = svg;
         el.syncQrSvg.classList.remove('hidden');
@@ -770,9 +955,9 @@
         el.syncQrSvg.classList.add('hidden');
       }
       if (error && error.code === 'capacity') {
-        setSyncStatus('Ссылка слишком длинная для QR-кода — скопируйте её кнопкой ниже.', true);
+        setSyncStatus('settings.qr.tooLong', true);
       } else {
-        setSyncStatus('Не удалось построить QR-код.', true);
+        setSyncStatus('settings.qr.buildFailed', true);
       }
     }
   }
@@ -780,10 +965,11 @@
   function applyPairingSnapshot(snapshot, options) {
     const forceServerInput = Boolean(options && options.forceServerInput);
     if (!snapshot || typeof snapshot !== 'object' || snapshot.ok === false) {
-      const message = snapshot && typeof snapshot.error === 'string' && snapshot.error
-        ? snapshot.error
-        : 'Не удалось получить состояние сопряжения.';
-      setSyncStatus(message, true);
+      if (snapshot && typeof snapshot.error === 'string' && snapshot.error) {
+        setSyncStatusRaw(snapshot.error, true);
+      } else {
+        setSyncStatus('settings.sync.pairingLoadFailed', true);
+      }
       return false;
     }
 
@@ -811,7 +997,7 @@
 
   function loadPairing() {
     if (!pairingBridgeReady()) {
-      setSyncStatus('Синхронизация доступна только в приложении.', true);
+      setSyncStatus('settings.sync.pairingUnavailable', true);
       return Promise.resolve(false);
     }
     if (pairingRequest) return pairingRequest;
@@ -827,7 +1013,7 @@
       })
       .catch(function () {
         pairingLoaded = false;
-        setSyncStatus('Не удалось получить состояние сопряжения.', true);
+        setSyncStatus('settings.sync.pairingLoadFailed', true);
         return false;
       })
       .then(function (result) {
@@ -897,16 +1083,16 @@
     }
   }
 
-  async function copyToClipboard(text, okMessage) {
+  async function copyToClipboard(text, okMessageKey) {
     if (!text) {
-      setSyncStatus('Данные сопряжения ещё не загружены.', true);
+      setSyncStatus('settings.qr.noPairingData', true);
       return;
     }
     const ok = await writeClipboardText(text);
     if (ok) {
-      setSyncStatus(okMessage, false);
+      setSyncStatus(okMessageKey, false);
     } else {
-      setSyncStatus('Не удалось скопировать в буфер обмена.', true);
+      setSyncStatus('settings.qr.copyFailed', true);
     }
   }
 
@@ -919,7 +1105,7 @@
     if (!el.syncE2eRotate) return;
     el.syncE2eRotate.classList.remove('is-armed');
     delete el.syncE2eRotate.dataset.armed;
-    el.syncE2eRotate.textContent = ROTATE_LABEL;
+    el.syncE2eRotate.textContent = rotateLabel();
   }
 
   function armRotate() {
@@ -927,7 +1113,7 @@
     rotateArmed = true;
     el.syncE2eRotate.dataset.armed = 'true';
     el.syncE2eRotate.classList.add('is-armed');
-    el.syncE2eRotate.textContent = ROTATE_CONFIRM_LABEL;
+    el.syncE2eRotate.textContent = rotateConfirmLabel();
     if (rotateTimer) clearTimeout(rotateTimer);
     rotateTimer = setTimeout(disarmRotate, ROTATE_CONFIRM_MS);
   }
@@ -945,12 +1131,9 @@
       })
       .then(function (snapshot) {
         if (!applyPairingSnapshot(snapshot)) return;
-        setSyncStatus(
-          'Ключ сменён. Переподключите телефон: откройте QR-код заново и отсканируйте его.',
-          false,
-        );
+        setSyncStatus('settings.e2e.rotated', false);
       }, function () {
-        setSyncStatus('Не удалось сменить ключ шифрования.', true);
+        setSyncStatus('settings.e2e.rotateFailed', true);
       });
   }
 
@@ -975,7 +1158,7 @@
       .then(function (snapshot) {
         if (!applyPairingSnapshot(snapshot)) revert();
       }, function () {
-        revert('Не удалось изменить синхронизацию.');
+        revert('settings.sync.ntfyFailed');
       });
   }
 
@@ -1002,7 +1185,7 @@
       .then(function (snapshot) {
         if (!applyPairingSnapshot(snapshot)) revert();
       }, function () {
-        revert('Не удалось изменить E2E-шифрование.');
+        revert('settings.e2e.toggleFailed');
       });
   }
 
@@ -1011,7 +1194,7 @@
     const raw = el.syncServerInput.value.trim();
     const candidate = raw || 'https://ntfy.sh';
     if (!isValidServerUrl(candidate)) {
-      setServerError(SERVER_ERROR_MESSAGE);
+      setServerError('settings.sync.serverError');
       return;
     }
     setServerError('');
@@ -1021,10 +1204,10 @@
       })
       .then(function (snapshot) {
         if (applyPairingSnapshot(snapshot, { forceServerInput: true })) {
-          setSyncStatus('Сервер ntfy сохранён.', false);
+          setSyncStatus('settings.sync.serverSaved', false);
         }
       }, function () {
-        setSyncStatus('Не удалось сохранить сервер ntfy.', true);
+        setSyncStatus('settings.sync.serverSaveFailed', true);
       });
   }
 
@@ -1062,12 +1245,12 @@
     }
     if (el.syncCopyUri) {
       el.syncCopyUri.addEventListener('click', guard(function () {
-        copyToClipboard(pairing ? pairing.uri : '', 'Ссылка сопряжения скопирована.');
+        copyToClipboard(pairing ? pairing.uri : '', 'settings.qr.uriCopied');
       }));
     }
     if (el.syncCopyTopic) {
       el.syncCopyTopic.addEventListener('click', guard(function () {
-        copyToClipboard(pairing ? pairing.topic : '', 'Тема скопирована.');
+        copyToClipboard(pairing ? pairing.topic : '', 'settings.qr.topicCopied');
       }));
     }
 
@@ -1161,11 +1344,12 @@
           } else if (result && result.ok && looksLikeSnapshot(result.snapshot)) {
             render(result.snapshot);
           } else if (result && result.ok === false) {
-            showError(result.error || 'Не удалось применить пресет.');
+            if (typeof result.error === 'string' && result.error) showErrorRaw(result.error);
+            else showError('settings.errors.presetFailed');
           }
         })
         .catch(function () {
-          showError('Не удалось применить пресет.');
+          showError('settings.errors.presetFailed');
         });
       return;
     }
@@ -1245,7 +1429,7 @@
     }
     if (!isValidHex(raw)) {
       el.accentHex.setAttribute('aria-invalid', 'true');
-      showError('Цвет задаётся в формате #rrggbb.');
+      showError('settings.errors.colorFormat');
       return;
     }
     el.accentHex.setAttribute('aria-invalid', 'false');
@@ -1286,30 +1470,30 @@
       json = null;
     }
     if (!json && hasExport) {
-      setJsonStatus('Не удалось получить JSON', true);
+      setJsonStatus('settings.json.missing', true);
       return;
     }
     if (!json) {
       try {
         json = JSON.stringify(appearancePayload(), null, 2);
       } catch (error) {
-        setJsonStatus('Не удалось получить JSON', true);
+        setJsonStatus('settings.json.missing', true);
         return;
       }
     }
     const ok = await writeClipboardText(json);
     if (ok) {
-      setJsonStatus('JSON скопирован в буфер обмена', false);
+      setJsonStatus('settings.json.copied', false);
     } else {
       if (el.importArea) el.importArea.value = json;
-      setJsonStatus('Скопируйте JSON из поля ниже', false);
+      setJsonStatus('settings.json.copyFallback', false);
     }
   }
 
   async function handleImport() {
     const text = el.importArea ? el.importArea.value : '';
     if (!text || !String(text).trim()) {
-      setJsonStatus('Вставьте JSON пресета', true);
+      setJsonStatus('settings.json.paste', true);
       return;
     }
     const hasImport = hasBridge() && typeof bridge.importAppearance === 'function';
@@ -1318,13 +1502,23 @@
         const result = await bridge.importAppearance(text);
         if (result && result.ok) {
           if (result.snapshot && typeof result.snapshot === 'object') render(result.snapshot);
-          setJsonStatus('Пресет применён', false);
+          setJsonStatus('settings.json.applied', false);
           return;
         }
-        setJsonStatus((result && result.error) || 'Некорректный JSON', true);
+        const reasonKey = result && typeof result.reason === 'string'
+          ? JSON_REASON_KEYS[result.reason]
+          : null;
+        const codeKey = result && typeof result.code === 'string'
+          ? JSON_CODE_KEYS[result.code]
+          : null;
+        if (reasonKey) setJsonStatus(reasonKey, true);
+        else if (codeKey) setJsonStatus(codeKey, true);
+        else if (result && typeof result.error === 'string' && result.error) {
+          setJsonStatusRaw(result.error, true);
+        } else setJsonStatus('settings.json.invalid', true);
         return;
       } catch (error) {
-        setJsonStatus('Не удалось применить пресет', true);
+        setJsonStatus('settings.json.failed', true);
         return;
       }
     }
@@ -1333,11 +1527,11 @@
     try {
       parsed = JSON.parse(text);
     } catch (error) {
-      setJsonStatus('Некорректный JSON', true);
+      setJsonStatus('settings.errors.invalidJson', true);
       return;
     }
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      setJsonStatus('Некорректный JSON', true);
+      setJsonStatus('settings.errors.invalidJson', true);
       return;
     }
     const patch = {};
@@ -1355,18 +1549,16 @@
     if (MODES.indexOf(parsed.preset_mode) !== -1) patch.preset_mode = parsed.preset_mode;
     if (Array.isArray(parsed.blocks)) patch.blocks = normalizeBlocks(parsed.blocks);
     if (!Object.keys(patch).length) {
-      setJsonStatus('В JSON нет известных полей', true);
+      setJsonStatus('settings.json.noKnownFields', true);
       return;
     }
     if (patch.blocks) state.blocks = normalizeBlocks(patch.blocks);
-    setJsonStatus('Пресет применён', false);
+    setJsonStatus('settings.json.applied', false);
     applyPatch(patch);
   }
 
   /** Two-step reset: the destructive action asks once, in place, then forgets. */
   const RESET_CONFIRM_MS = 4000;
-  const RESET_LABEL = 'Сбросить всё';
-  const RESET_CONFIRM_LABEL = 'Точно сбросить?';
   let resetConfirmTimer = null;
 
   function disarmReset() {
@@ -1376,13 +1568,13 @@
     }
     if (!el.reset) return;
     el.reset.classList.remove('is-confirming');
-    el.reset.textContent = RESET_LABEL;
+    el.reset.textContent = t('settings.footer.reset');
   }
 
   function armReset() {
     if (!el.reset) return;
     el.reset.classList.add('is-confirming');
-    el.reset.textContent = RESET_CONFIRM_LABEL;
+    el.reset.textContent = t('settings.footer.resetConfirm');
     if (resetConfirmTimer) clearTimeout(resetConfirmTimer);
     resetConfirmTimer = setTimeout(disarmReset, RESET_CONFIRM_MS);
   }
@@ -1400,7 +1592,7 @@
         setJsonStatus('', false);
       })
       .catch(function () {
-        showError('Не удалось сбросить внешний вид.');
+        showError('settings.errors.resetFailed');
       })
       .then(function () {
         el.reset.disabled = false;
@@ -1507,6 +1699,17 @@
       }));
     });
 
+    el.languageButtons.forEach(function (button) {
+      button.addEventListener('click', guard(function () {
+        const mode = button.getAttribute('data-language');
+        if (LANGUAGES.indexOf(mode) === -1) return;
+        selectLanguage(mode);
+        // Repaint immediately, then let the bridge confirm and persist it.
+        setLanguage({ language: mode });
+        applyPatch({ language: mode });
+      }));
+    });
+
     el.modes.forEach(function (button) {
       button.addEventListener('click', guard(function () {
         const mode = button.getAttribute('data-mode');
@@ -1606,7 +1809,7 @@
 
   function showUnavailable() {
     if (el.notice) {
-      el.notice.textContent = 'Настройки доступны только в приложении.';
+      el.notice.textContent = t('settings.bridgeNotice');
       el.notice.classList.remove('hidden');
     }
     document.body.classList.add('is-disabled');
@@ -1637,7 +1840,7 @@
         if (snapshot) render(snapshot);
       })
       .catch(function () {
-        showError('Не удалось загрузить настройки.');
+        showError('settings.errors.loadFailed');
       });
     if (typeof bridge.onAppearanceUpdate === 'function') {
       try {
@@ -1645,11 +1848,11 @@
           try {
             render(snapshot);
           } catch (error) {
-            showError('Не удалось обновить настройки.');
+            showError('settings.errors.updateFailed');
           }
         });
       } catch (error) {
-        showError('Не удалось подписаться на изменения.');
+        showError('settings.errors.subscribeFailed');
       }
     }
   }

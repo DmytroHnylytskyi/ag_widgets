@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import dev.agwidgets.data.AgStatus
 import dev.agwidgets.data.QuotaBucket
 import dev.agwidgets.ui.formatCountdownShort
+import dev.agwidgets.ui.i18n.LocalStrings
 import dev.agwidgets.ui.theme.AgDim
 import dev.agwidgets.ui.theme.AgTheme
 import dev.agwidgets.ui.theme.AgType
@@ -57,6 +58,7 @@ import kotlin.math.sin
 @Composable
 internal fun HeroCard(status: AgStatus?, nowMs: Long) {
     val colors = AgTheme.colors
+    val s = LocalStrings.current
     val buckets = status?.buckets.orEmpty()
     // 3p-* belongs to CLAUDE/GPT only; never duplicate it in the GEMINI slots.
     val geminiBuckets = buckets.filterNot { it.id.startsWith("3p-") }
@@ -67,13 +69,13 @@ internal fun HeroCard(status: AgStatus?, nowMs: Long) {
     val thirdBuckets = buckets.filter { it.id.startsWith("3p-") }
     val thirdFiveHour = thirdBuckets.firstOrNull { it.kind == "5h" }
     val thirdWeekly = thirdBuckets.firstOrNull { it.kind == "weekly" }
-    val updated = status?.let { updatedLabel(it.pcUpdatedAt ?: it.updatedAt, nowMs) } ?: "—"
+    val updated = status?.let { updatedLabel(it.pcUpdatedAt ?: it.updatedAt, nowMs, s) } ?: "—"
 
     GlassCard {
         if (colors.isClassic) {
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "02 / LIMITS",
+                    text = s.serialLimits,
                     fontFamily = FontFamily.Monospace,
                     fontSize = 8.sp,
                     lineHeight = 12.sp,
@@ -92,25 +94,25 @@ internal fun HeroCard(status: AgStatus?, nowMs: Long) {
                 )
             }
             Text(
-                text = "Лимиты",
+                text = s.labelLimits,
                 style = AgType.title,
                 color = colors.text,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                QuotaRing("GEMINI 5Ч", fiveHour, nowMs, accent = colors.glow, modifier = Modifier.weight(1f))
-                QuotaRing("GEMINI НЕД", weekly, nowMs, accent = colors.glow, modifier = Modifier.weight(1f))
+                QuotaRing(s.dashLimitsClassicGemini5h, fiveHour, nowMs, accent = colors.glow, modifier = Modifier.weight(1f))
+                QuotaRing(s.dashLimitsClassicGeminiWeekly, weekly, nowMs, accent = colors.glow, modifier = Modifier.weight(1f))
             }
             if (thirdFiveHour != null || thirdWeekly != null) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     QuotaRing(
-                        "GPT 5Ч",
+                        s.dashLimitsClassicGpt5h,
                         thirdFiveHour,
                         nowMs,
                         accent = colors.pink,
                         modifier = Modifier.weight(1f),
                     )
                     QuotaRing(
-                        "GPT НЕД",
+                        s.dashLimitsClassicGptWeekly,
                         thirdWeekly,
                         nowMs,
                         accent = colors.pink,
@@ -122,7 +124,7 @@ internal fun HeroCard(status: AgStatus?, nowMs: Long) {
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Лимиты · остаток",
+                        text = s.dashLimitsRemainingTitle,
                         style = AgType.section,
                         color = colors.text,
                         maxLines = 1,
@@ -145,10 +147,10 @@ internal fun HeroCard(status: AgStatus?, nowMs: Long) {
                     maxLines = 1,
                 )
             }
-            QuotaRow("Gemini · 5 ч", fiveHour, nowMs, accent = colors.glow)
-            QuotaRow("Gemini · 7 дн", weekly, nowMs, accent = colors.glow)
-            QuotaRow("Claude / GPT · 5 ч", thirdFiveHour, nowMs, accent = colors.violet)
-            QuotaRow("Claude / GPT · 7 дн", thirdWeekly, nowMs, accent = colors.violet)
+            QuotaRow(s.dashLimitsGemini5h, fiveHour, nowMs, accent = colors.glow)
+            QuotaRow(s.dashLimitsGeminiWeekly, weekly, nowMs, accent = colors.glow)
+            QuotaRow(s.dashLimitsThird5h, thirdFiveHour, nowMs, accent = colors.violet)
+            QuotaRow(s.dashLimitsThirdWeekly, thirdWeekly, nowMs, accent = colors.violet)
         }
     }
 }
@@ -157,6 +159,7 @@ internal fun HeroCard(status: AgStatus?, nowMs: Long) {
 @Composable
 private fun QuotaRow(label: String, bucket: QuotaBucket?, nowMs: Long, accent: Color) {
     val colors = AgTheme.colors
+    val s = LocalStrings.current
     // A missing or non-finite fraction must render as "—", never as 0% or NaN.
     val rawFraction = bucket?.remainingFraction
     val known = rawFraction != null && rawFraction.isFinite()
@@ -168,7 +171,7 @@ private fun QuotaRow(label: String, bucket: QuotaBucket?, nowMs: Long, accent: C
         target < 0.15f -> colors.amber
         else -> accent
     }
-    val reset = formatCountdownShort(bucket?.resetTime, nowMs)?.takeIf { it != "—" }
+    val reset = formatCountdownShort(bucket?.resetTime, nowMs, s)?.takeIf { it != "—" }
 
     Column(verticalArrangement = Arrangement.spacedBy(AgDim.ControlGap)) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -183,7 +186,7 @@ private fun QuotaRow(label: String, bucket: QuotaBucket?, nowMs: Long, accent: C
                 // No reset scheduled => no lone "—" line at all.
                 if (reset != null) {
                     Text(
-                        text = "сброс через $reset",
+                        text = s.fill(s.dashLimitsResetIn, "time" to reset),
                         style = AgType.caption,
                         color = colors.muted,
                         maxLines = 1,
@@ -193,7 +196,7 @@ private fun QuotaRow(label: String, bucket: QuotaBucket?, nowMs: Long, accent: C
             }
             Spacer(Modifier.width(AgDim.ControlGap))
             Text(
-                text = if (known && target != null) "${(target * 100).roundToInt()}%" else "нет данных",
+                text = if (known && target != null) "${(target * 100).roundToInt()}%" else s.statusNoDataLower,
                 style = AgType.title,
                 color = if (known) colors.text else colors.muted,
                 maxLines = 1,
@@ -321,7 +324,7 @@ private fun QuotaRing(
                 )
                 // A full quota has no running timer yet: hide the line instead
                 // of printing "нет данных" inside a 100% ring.
-                formatCountdownShort(bucket?.resetTime, nowMs)?.takeIf { it != "—" }?.let { reset ->
+                formatCountdownShort(bucket?.resetTime, nowMs, LocalStrings.current)?.takeIf { it != "—" }?.let { reset ->
                     Text(
                         text = reset,
                         fontFamily = FontFamily.Monospace,

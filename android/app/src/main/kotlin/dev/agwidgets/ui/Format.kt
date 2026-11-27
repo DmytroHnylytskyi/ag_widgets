@@ -1,5 +1,7 @@
 package dev.agwidgets.ui
 
+import dev.agwidgets.ui.i18n.AgStrings
+import dev.agwidgets.ui.i18n.RuStrings
 import java.time.Duration
 import java.time.Instant
 import java.time.OffsetDateTime
@@ -34,41 +36,44 @@ internal fun statusAgeMinutes(iso: String?, nowMs: Long): Long? {
     return ((nowMs - instant.toEpochMilli()) / 60_000).coerceAtLeast(0)
 }
 
-internal fun updatedLabel(iso: String?, nowMs: Long): String {
+internal fun updatedLabel(
+    iso: String?,
+    nowMs: Long,
+    strings: AgStrings = RuStrings,
+): String {
     val age = statusAgeMinutes(iso, nowMs) ?: return "—"
-    return when {
-        age < 1 -> "только что"
-        age < 60 -> "$age мин назад"
-        age < 24 * 60 -> "${age / 60} ч назад"
-        else -> "${age / (24 * 60)} д назад"
-    }
+    return strings.updatedLabel(age)
 }
 
-private fun countdownText(totalSeconds: Long): String {
+private fun countdownText(totalSeconds: Long, strings: AgStrings): String {
     val days = totalSeconds / 86400
     val hours = (totalSeconds % 86400) / 3600
     val minutes = (totalSeconds % 3600) / 60
-    return when {
-        days > 0 -> "${days}д ${hours}ч"
-        hours > 0 -> "${hours}ч ${minutes}м"
-        else -> "${minutes}м"
-    }
+    return strings.countdown(days, hours, minutes)
 }
 
-internal fun formatCountdown(iso: String?, nowMs: Long): String {
+internal fun formatCountdown(
+    iso: String?,
+    nowMs: Long,
+    strings: AgStrings = RuStrings,
+): String {
     val target = parseInstant(iso) ?: return ""
     if (isEpochZero(target)) return ""
     val totalSeconds = Duration.between(Instant.ofEpochMilli(nowMs), target).seconds
-    if (totalSeconds <= 0) return "сброс сейчас"
-    return countdownText(totalSeconds)
+    if (totalSeconds <= 0) return strings.resetNow
+    return countdownText(totalSeconds, strings)
 }
 
-internal fun formatCountdownShort(iso: String?, nowMs: Long): String? {
+internal fun formatCountdownShort(
+    iso: String?,
+    nowMs: Long,
+    strings: AgStrings = RuStrings,
+): String? {
     val target = parseInstant(iso) ?: return null
     if (isEpochZero(target)) return "—"
     val totalSeconds = Duration.between(Instant.ofEpochMilli(nowMs), target).seconds
-    if (totalSeconds <= 0) return "сброс сейчас"
-    return countdownText(totalSeconds)
+    if (totalSeconds <= 0) return strings.resetNow
+    return countdownText(totalSeconds, strings)
 }
 
 internal fun formatDateShort(iso: String): String {

@@ -6,6 +6,8 @@ const { windowStatePath } = require('./paths');
 const { readAllState, readJson, writeJsonAtomic } = require('./storage');
 const { logError } = require('./logger');
 const appearance = require('./appearance');
+const preferences = require('./preferences');
+const i18n = require('../shared/i18n.js');
 
 /** Settings window: two tabs fit without a horizontal scrollbar. */
 const SETTINGS_WIDTH = 430;
@@ -437,7 +439,8 @@ function openSettingsWindow() {
     x: position.x,
     y: position.y,
     // Native frame on purpose: the Settings window is a regular utility window.
-    title: 'Настройки — AG Widgets',
+    // The title follows the interface language (RU by default).
+    title: i18n.t('settings.windowTitle', null, preferences.resolveCurrentLanguage()),
     resizable: false,
     maximizable: false,
     fullscreenable: false,
@@ -471,6 +474,25 @@ function openSettingsWindow() {
 
 function getSettingsWindow() {
   return settingsWindow && !settingsWindow.isDestroyed() ? settingsWindow : null;
+}
+
+/**
+ * Retitle the Settings window for `lang` without recreating it. Called when
+ * the interface language changes; a missing window is a no-op.
+ */
+function setSettingsWindowTitle(lang) {
+  const window = getSettingsWindow();
+  if (!window) return;
+  const normalized = i18n.normalizeLanguage(lang);
+  const resolved =
+    normalized === 'ru' || normalized === 'en'
+      ? normalized
+      : preferences.resolveCurrentLanguage();
+  try {
+    window.setTitle(i18n.t('settings.windowTitle', null, resolved));
+  } catch (error) {
+    logError('setSettingsWindowTitle', error);
+  }
 }
 
 /** Destroy the Settings window; safe when it is already closed. */
@@ -660,6 +682,7 @@ module.exports = {
   getWindow,
   openSettingsWindow,
   getSettingsWindow,
+  setSettingsWindowTitle,
   closeSettingsWindow,
   applyAppearanceToWindows,
   pushAppearance,

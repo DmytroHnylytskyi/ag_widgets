@@ -1,5 +1,7 @@
 package dev.agwidgets.data
 
+import dev.agwidgets.ui.i18n.AgStrings
+import dev.agwidgets.ui.i18n.RuStrings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -41,7 +43,10 @@ object ZCodeClient {
     private const val ORIGIN = "https://zcode.z.ai"
     private const val APP_VERSION = "3.5.0"
 
-    suspend fun startOAuthFlow(provider: String = "zai"): Result<ZCodeOAuthFlow> = withContext(Dispatchers.IO) {
+    suspend fun startOAuthFlow(
+        provider: String = "zai",
+        strings: AgStrings = RuStrings,
+    ): Result<ZCodeOAuthFlow> = withContext(Dispatchers.IO) {
         try {
             val pollToken = randomHex(32)
             val body = JSONObject().put("provider", provider).toString()
@@ -51,15 +56,17 @@ object ZCodeClient {
                 headers = mapOf("Authorization" to "Bearer $pollToken")
             )
             if (code !in 200..299 || json == null || json.optInt("code", -1) != 0) {
-                return@withContext Result.failure(IllegalStateException("Ошибка init OAuth (HTTP $code)"))
+                return@withContext Result.failure(
+                    IllegalStateException(strings.fill(strings.zcInitFailed, "code" to code))
+                )
             }
             val data = json.optJSONObject("data")
-                ?: return@withContext Result.failure(IllegalStateException("Пустой ответ init"))
+                ?: return@withContext Result.failure(IllegalStateException(strings.zcInitEmpty))
             val flowId = data.optString("flow_id").trim()
             val rawAuthUrl = data.optString("authorize_url").trim()
             val interval = data.optLong("poll_interval_sec", 3L).coerceIn(2L, 10L)
             if (flowId.isEmpty() || rawAuthUrl.isEmpty()) {
-                return@withContext Result.failure(IllegalStateException("Некорректные поля OAuth init"))
+                return@withContext Result.failure(IllegalStateException(strings.zcInitInvalidFields))
             }
             val authUrl = isTrustedAuthorizeUrl(rawAuthUrl)
                 ?: return@withContext Result.failure(SecurityException("Refusing untrusted sign-in URL"))
@@ -69,7 +76,10 @@ object ZCodeClient {
         }
     }
 
-    suspend fun pollOAuthFlow(flow: ZCodeOAuthFlow): ZCodeOAuthPollResult = withContext(Dispatchers.IO) {
+    suspend fun pollOAuthFlow(
+        flow: ZCodeOAuthFlow,
+        strings: AgStrings = RuStrings,
+    ): ZCodeOAuthPollResult = withContext(Dispatchers.IO) {
         try {
             val encoded = URLEncoder.encode(flow.flowId, "UTF-8")
             val (code, json) = getJson(
@@ -77,7 +87,9 @@ object ZCodeClient {
                 headers = mapOf("Authorization" to "Bearer ${flow.pollToken}")
             )
             if (code in 400..499 && code != 408 && code != 429) {
-                return@withContext ZCodeOAuthPollResult.Failed("Сессия входа истекла (HTTP $code)")
+                return@withContext ZCodeOAuthPollResult.Failed(
+                    strings.fill(strings.zcSessionExpired, "code" to code)
+                )
             }
             if (code !in 200..299 || json == null) {
                 return@withContext ZCodeOAuthPollResult.Pending
@@ -85,11 +97,11 @@ object ZCodeClient {
             val data = json.optJSONObject("data") ?: return@withContext ZCodeOAuthPollResult.Pending
             when (data.optString("status")) {
                 "pending" -> ZCodeOAuthPollResult.Pending
-                "failed" -> ZCodeOAuthPollResult.Failed("Вход отклонён")
+                "failed" -> ZCodeOAuthPollResult.Failed(strings.zcLoginRejected)
                 "ready" -> {
                     val token = data.optString("token").trim()
                     if (token.isNotEmpty()) ZCodeOAuthPollResult.Ready(token)
-                    else ZCodeOAuthPollResult.Failed("Сервер не вернул токен")
+                    else ZCodeOAuthPollResult.Failed(strings.zcNoTokenFromServer)
                 }
                 else -> ZCodeOAuthPollResult.Pending
             }
@@ -104,9 +116,10 @@ object ZCodeClient {
         seq: Int = 0,
         previous: ZCodeStatus? = null,
         timeoutMs: Int = 15_000,
+        strings: AgStrings = RuStrings,
     ): Result<ZCodeStatus> = withContext(Dispatchers.IO) {
         if (token.isBlank()) {
-            return@withContext Result.failure(IllegalArgumentException("Токен ZCode не задан"))
+            return@withContext Result.failure(IllegalArgumentException(strings.zcTokenMissing))
         }
 
         val headers = mapOf(

@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import dev.agwidgets.data.ZCodeStatus
 import dev.agwidgets.ui.formatDateShort
 import dev.agwidgets.ui.formatUnits
+import dev.agwidgets.ui.i18n.LocalStrings
 import dev.agwidgets.ui.theme.AgDim
 import dev.agwidgets.ui.theme.AgTheme
 import dev.agwidgets.ui.theme.AgType
@@ -54,21 +55,21 @@ internal fun AccessCard(
     onClearToken: () -> Unit,
 ) {
     val colors = AgTheme.colors
+    val s = LocalStrings.current
     val (chipText, chipColor) = zcodeChip(zcode)
     val planSuffix = zcode?.planName?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""
     var confirmClear by remember { mutableStateOf(false) }
 
     GlassCard {
         SectionHeader(
-            serial = "03 / ACCESS",
-            title = "ZCode$planSuffix",
+            serial = s.serialAccess,
+            title = s.labelZcode + planSuffix,
             chipText = chipText,
             chipColor = chipColor,
         )
         // One description: the chip already states whether monitoring is live.
         Text(
-            text = "Прямой опрос zcode.z.ai каждые 15 минут: ваучеры на 300–500M токенов и баланс " +
-                "приходят даже при выключенном компьютере.",
+            text = s.accDescription,
             style = AgType.body,
             color = colors.secondary,
         )
@@ -87,7 +88,7 @@ internal fun AccessCard(
                 autoCorrectEnabled = false,
                 keyboardType = KeyboardType.Password,
             ),
-            label = { Text("Или вставьте JWT-токен вручную", style = AgType.caption) },
+            label = { Text(s.accTokenLabel, style = AgType.caption) },
             textStyle = AgType.body,
             shape = RoundedCornerShape(AgDim.ControlRadius),
             colors = glassFieldColors(colors.violet),
@@ -111,7 +112,7 @@ internal fun AccessCard(
                     contentColor = onAccentFor(colors.violet),
                 ),
             ) {
-                Text(text = if (isPending) "Ожидание…" else "Войти в Z.ai", style = AgType.body)
+                Text(text = if (isPending) s.accWaiting else s.dashZcodeSignIn, style = AgType.body)
             }
             if (isPending) {
                 OutlinedButton(
@@ -122,12 +123,12 @@ internal fun AccessCard(
                     shape = RoundedCornerShape(AgDim.ControlRadius),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.text),
                 ) {
-                    Text(text = "Отмена", style = AgType.body)
+                    Text(text = s.commonCancel, style = AgType.body)
                 }
             }
         }
         // Secondary save action belongs to its own field, not to the page CTA row.
-        AgGhostButton(text = "Сохранить токен", onClick = onSaveToken)
+        AgGhostButton(text = s.accSaveToken, onClick = onSaveToken)
         if (token.isNotBlank()) {
             Spacer(Modifier.height(AgDim.ControlGap))
             OutlinedButton(
@@ -138,7 +139,7 @@ internal fun AccessCard(
                 shape = RoundedCornerShape(AgDim.ControlRadius),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.rose),
             ) {
-                Text(text = "Очистить токен", style = AgType.body)
+                Text(text = s.accClearToken, style = AgType.body)
             }
         }
         if (message.isNotBlank()) {
@@ -157,10 +158,10 @@ internal fun AccessCard(
             titleContentColor = colors.text,
             textContentColor = colors.secondary,
             shape = RoundedCornerShape(AgDim.PanelRadius),
-            title = { Text(text = "Удалить токен ZCode?", style = AgType.title) },
+            title = { Text(text = s.accDeleteTitle, style = AgType.title) },
             text = {
                 Text(
-                    text = "Автономная проверка ваучеров и баланса остановится до следующего входа.",
+                    text = s.accDeleteBody,
                     style = AgType.body,
                 )
             },
@@ -169,12 +170,12 @@ internal fun AccessCard(
                     confirmClear = false
                     onClearToken()
                 }) {
-                    Text(text = "Удалить", style = AgType.body, color = colors.rose)
+                    Text(text = s.commonDelete, style = AgType.body, color = colors.rose)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { confirmClear = false }) {
-                    Text(text = "Отмена", style = AgType.body, color = colors.secondary)
+                    Text(text = s.commonCancel, style = AgType.body, color = colors.secondary)
                 }
             },
         )
@@ -187,13 +188,30 @@ private fun BalanceBar(zcode: ZCodeStatus) {
     val total = zcode.totalUnits
     val colors = AgTheme.colors
     val classic = colors.isClassic
+    val s = LocalStrings.current
     Column(verticalArrangement = Arrangement.spacedBy(AgDim.ControlGap)) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = if (classic) {
-                    "ОСТАТОК ${formatUnits(remaining)}${total?.let { " / ${formatUnits(it)}" } ?: ""}"
+                    if (total != null) {
+                        s.fill(
+                            s.accBalanceClassicTotal,
+                            "remaining" to formatUnits(remaining),
+                            "total" to formatUnits(total),
+                        )
+                    } else {
+                        s.fill(s.accBalanceClassic, "remaining" to formatUnits(remaining))
+                    }
                 } else {
-                    "Осталось ${formatUnits(remaining)}${total?.let { " из ${formatUnits(it)}" } ?: ""}"
+                    if (total != null) {
+                        s.fill(
+                            s.dashZcodeRemainingOf,
+                            "remaining" to formatUnits(remaining),
+                            "total" to formatUnits(total),
+                        )
+                    } else {
+                        s.fill(s.dashZcodeRemainingOnly, "remaining" to formatUnits(remaining))
+                    }
                 },
                 style = if (classic) {
                     AgType.caption.copy(letterSpacing = 0.5.sp, color = colors.text)
@@ -208,7 +226,11 @@ private fun BalanceBar(zcode: ZCodeStatus) {
             zcode.endsAt?.let {
                 Spacer(Modifier.width(AgDim.ControlGap))
                 Text(
-                    text = if (classic) "ДО ${formatDateShort(it)}" else "до ${formatDateShort(it)}",
+                    text = if (classic) {
+                        s.fill(s.accUntilClassic, "date" to formatDateShort(it))
+                    } else {
+                        s.fill(s.accUntil, "date" to formatDateShort(it))
+                    },
                     style = AgType.caption,
                     color = colors.muted,
                     maxLines = 1,
@@ -237,20 +259,21 @@ private fun BalanceBar(zcode: ZCodeStatus) {
 @Composable
 private fun zcodeChip(zcode: ZCodeStatus?): Pair<String, Color> {
     val colors = AgTheme.colors
-    if (zcode == null) return "Нет данных" to colors.muted
+    val s = LocalStrings.current
+    if (zcode == null) return s.statusNoData to colors.muted
     if (zcode.isCouponUnknown) {
         return when (zcode.errorKind) {
-            "auth_expired" -> "Нужен вход" to colors.amber
-            "rate_limited" -> "Лимит запросов" to colors.amber
-            "network" -> "Нет связи" to colors.rose
-            "server_error", "api_changed", "parse_failed" -> "Ошибка проверки" to colors.rose
-            else -> "Неизвестно" to colors.muted
+            "auth_expired" -> s.statusLoginRequired to colors.amber
+            "rate_limited" -> s.statusRateLimited to colors.amber
+            "network" -> s.statusNoConnection to colors.rose
+            "server_error", "api_changed", "parse_failed" -> s.statusCheckFailed to colors.rose
+            else -> s.statusUnknown to colors.muted
         }
     }
-    if (zcode.networkError) return "Нет связи" to colors.rose
-    if (zcode.authOk == false) return "Нужен вход" to colors.amber
-    if (zcode.method == "disabled") return "Не подключён" to colors.muted
-    if (zcode.isCouponVisible || zcode.couponVisible) return "Ваучер" to colors.glow
-    if (zcode.running) return "Активен" to colors.green
-    return "Не запущен" to colors.muted
+    if (zcode.networkError) return s.statusNoConnection to colors.rose
+    if (zcode.authOk == false) return s.statusLoginRequired to colors.amber
+    if (zcode.method == "disabled") return s.statusNotConnected to colors.muted
+    if (zcode.isCouponVisible || zcode.couponVisible) return s.statusCoupon to colors.glow
+    if (zcode.running) return s.statusActive to colors.green
+    return s.statusNotRunning to colors.muted
 }

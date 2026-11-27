@@ -427,27 +427,39 @@ function exportAppearanceJson(value) {
 
 /**
  * Parse a pasted preset. Never touches disk and never throws: on any problem
- * the caller gets `{ ok: false, error }` and keeps the current configuration.
+ * the caller gets `{ ok: false, error, code, reason }` and keeps the current
+ * configuration. `reason` is a stable machine key the IPC layer maps to a
+ * localized message; `error`/`code` keep their historical Russian/string values.
  */
 function importAppearanceJson(rawText) {
   if (typeof rawText !== 'string') {
-    return { ok: false, error: 'Ожидается JSON-строка', code: 'invalid' };
+    return {
+      ok: false,
+      error: 'Ожидается JSON-строка',
+      code: 'invalid',
+      reason: 'not_string',
+    };
   }
   const trimmed = rawText.trim();
   if (!trimmed) {
-    return { ok: false, error: 'Пустой JSON', code: 'invalid' };
+    return { ok: false, error: 'Пустой JSON', code: 'invalid', reason: 'empty' };
   }
   if (Buffer.byteLength(trimmed, 'utf8') > MAX_IMPORT_BYTES) {
-    return { ok: false, error: 'JSON больше 16 КБ', code: 'too_large' };
+    return { ok: false, error: 'JSON больше 16 КБ', code: 'too_large', reason: 'too_large' };
   }
   let parsed;
   try {
     parsed = JSON.parse(trimmed);
   } catch {
-    return { ok: false, error: 'Некорректный JSON', code: 'invalid' };
+    return { ok: false, error: 'Некорректный JSON', code: 'invalid', reason: 'invalid_json' };
   }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    return { ok: false, error: 'Корень JSON должен быть объектом', code: 'invalid' };
+    return {
+      ok: false,
+      error: 'Корень JSON должен быть объектом',
+      code: 'invalid',
+      reason: 'root_not_object',
+    };
   }
   return { ok: true, appearance: normalizeAppearance(parsed) };
 }
