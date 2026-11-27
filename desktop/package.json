@@ -1,6 +1,6 @@
 {
   "name": "ag-widgets-desktop",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "Aetheria-styled desktop widget for Antigravity context, quotas, and ZCode",
   "main": "main.js",
