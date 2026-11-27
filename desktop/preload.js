@@ -26,6 +26,12 @@ contextBridge.exposeInMainWorld('agWidgets', {
   updateSettings: (patch) => ipcRenderer.invoke('agw:update-settings', patch),
   /** Reset appearance.json to defaults; resolves to the fresh snapshot. */
   resetAppearance: () => ipcRenderer.invoke('agw:reset-appearance'),
+  /** Apply a built-in widget preset (`full`, `compact`, `minibar`, `pill`, …). */
+  applyPreset: (id) => ipcRenderer.invoke('agw:apply-preset', id),
+  /** Pretty-printed appearance JSON for copying to the clipboard. */
+  exportAppearance: () => ipcRenderer.invoke('agw:export-appearance'),
+  /** Validate and persist a pasted appearance JSON; resolves to the snapshot. */
+  importAppearance: (json) => ipcRenderer.invoke('agw:import-appearance', json),
   onStateUpdate: (cb) => {
     const handler = (_event, payload) => cb(payload);
     ipcRenderer.on('agw:state', handler);

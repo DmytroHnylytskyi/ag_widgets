@@ -2,7 +2,7 @@
 <html lang="ru" data-theme="graphite">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none';" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none';" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Настройки — AG Widgets</title>
   <link rel="stylesheet" href="styles.css" />
@@ -15,110 +15,292 @@
     <header class="settings-header">
       <h1 class="settings-title">Настройки</h1>
       <p class="settings-subtitle">Внешний вид и поведение виджета</p>
+      <div class="tabs" role="tablist" aria-label="Разделы настроек">
+        <button id="tab-appearance" class="tab" role="tab" type="button" aria-selected="true" aria-controls="panel-appearance">Оформление</button>
+        <button id="tab-builder" class="tab" role="tab" type="button" aria-selected="false" aria-controls="panel-builder">Конструктор</button>
+      </div>
     </header>
 
     <main class="settings-main">
       <p id="bridge-notice" class="notice hidden" role="status">Настройки доступны только в приложении.</p>
 
-      <section class="panel" aria-labelledby="appearance-heading">
-        <h2 id="appearance-heading" class="panel-title">Внешний вид</h2>
-
-        <div class="theme-grid" role="group" aria-label="Тема оформления">
-          <button type="button" class="theme-option" data-theme-value="system" aria-pressed="false">
-            <span class="theme-swatch" aria-hidden="true">
-              <span class="swatch-card"></span>
-              <span class="swatch-accent"></span>
-            </span>
-            <span class="theme-label" title="Системная тема">Авто</span>
-          </button>
-          <button type="button" class="theme-option" data-theme-value="graphite" aria-pressed="false">
-            <span class="theme-swatch" aria-hidden="true">
-              <span class="swatch-card"></span>
-              <span class="swatch-accent"></span>
-            </span>
-            <span class="theme-label">Graphite</span>
-          </button>
-          <button type="button" class="theme-option" data-theme-value="paper" aria-pressed="false">
-            <span class="theme-swatch" aria-hidden="true">
-              <span class="swatch-card"></span>
-              <span class="swatch-accent"></span>
-            </span>
-            <span class="theme-label">Paper</span>
-          </button>
-          <button type="button" class="theme-option" data-theme-value="oled" aria-pressed="false">
-            <span class="theme-swatch" aria-hidden="true">
-              <span class="swatch-card"></span>
-              <span class="swatch-accent"></span>
-            </span>
-            <span class="theme-label">OLED</span>
-          </button>
-          <button type="button" class="theme-option" data-theme-value="glass" aria-pressed="false">
-            <span class="theme-swatch" aria-hidden="true">
-              <span class="swatch-card"></span>
-              <span class="swatch-accent"></span>
-            </span>
-            <span class="theme-label">Glass</span>
-          </button>
-          <button type="button" class="theme-option" data-theme-value="classic" aria-pressed="false">
-            <span class="theme-swatch" aria-hidden="true">
-              <span class="swatch-card"></span>
-              <span class="swatch-accent"></span>
-            </span>
-            <span class="theme-label">Classic</span>
-          </button>
-        </div>
-
-        <div id="classic-variant" class="variant-row hidden" aria-hidden="true">
-          <span id="classic-variant-label" class="field-label">Вариант Classic</span>
-          <div class="segmented" role="group" aria-labelledby="classic-variant-label">
-            <button type="button" class="segment" data-variant-value="dark" aria-pressed="false">Тёмная</button>
-            <button type="button" class="segment" data-variant-value="light" aria-pressed="false">Светлая</button>
+      <section id="panel-appearance" class="tabpanel" role="tabpanel" aria-labelledby="tab-appearance">
+        <section class="panel" aria-labelledby="presets-heading">
+          <h2 id="presets-heading" class="panel-title">Готовые пресеты</h2>
+          <div class="preset-grid" role="group" aria-labelledby="presets-heading">
+            <button class="preset-btn" type="button" data-preset="full">Полный</button>
+            <button class="preset-btn" type="button" data-preset="compact">Компактный</button>
+            <button class="preset-btn" type="button" data-preset="minibar">Мини-бар</button>
+            <button class="preset-btn" type="button" data-preset="pill">Пилюля</button>
+            <button class="preset-btn" type="button" data-preset="paper">Светлая бумага</button>
+            <button class="preset-btn" type="button" data-preset="classic">Classic</button>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section class="panel" aria-labelledby="font-heading">
-        <div class="panel-head">
-          <h2 id="font-heading" class="panel-title">Масштаб шрифта</h2>
-          <div class="value-row">
-            <output id="font-scale-value" class="value-text" for="font-scale">100%</output>
-            <button id="font-scale-reset" class="icon-reset" type="button" title="Сбросить к 100%" aria-label="Сбросить масштаб к 100%">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M3 12a9 9 0 1 0 3.2-6.9"></path>
-                <path d="M3 4v5h5"></path>
-              </svg>
+        <section class="panel" aria-labelledby="appearance-heading">
+          <h2 id="appearance-heading" class="panel-title">Тема</h2>
+
+          <div class="theme-grid" role="group" aria-label="Тема оформления">
+            <button type="button" class="theme-option" data-theme-value="system" aria-pressed="false">
+              <span class="theme-swatch" aria-hidden="true">
+                <span class="swatch-card"></span>
+                <span class="swatch-accent"></span>
+              </span>
+              <span class="theme-label" title="Системная тема">Авто</span>
+            </button>
+            <button type="button" class="theme-option" data-theme-value="graphite" aria-pressed="false">
+              <span class="theme-swatch" aria-hidden="true">
+                <span class="swatch-card"></span>
+                <span class="swatch-accent"></span>
+              </span>
+              <span class="theme-label">Graphite</span>
+            </button>
+            <button type="button" class="theme-option" data-theme-value="paper" aria-pressed="false">
+              <span class="theme-swatch" aria-hidden="true">
+                <span class="swatch-card"></span>
+                <span class="swatch-accent"></span>
+              </span>
+              <span class="theme-label">Paper</span>
+            </button>
+            <button type="button" class="theme-option" data-theme-value="oled" aria-pressed="false">
+              <span class="theme-swatch" aria-hidden="true">
+                <span class="swatch-card"></span>
+                <span class="swatch-accent"></span>
+              </span>
+              <span class="theme-label">OLED</span>
+            </button>
+            <button type="button" class="theme-option" data-theme-value="glass" aria-pressed="false">
+              <span class="theme-swatch" aria-hidden="true">
+                <span class="swatch-card"></span>
+                <span class="swatch-accent"></span>
+              </span>
+              <span class="theme-label">Glass</span>
+            </button>
+            <button type="button" class="theme-option" data-theme-value="classic" aria-pressed="false">
+              <span class="theme-swatch" aria-hidden="true">
+                <span class="swatch-card"></span>
+                <span class="swatch-accent"></span>
+              </span>
+              <span class="theme-label">Classic</span>
             </button>
           </div>
-        </div>
-        <div class="range-row">
-          <input id="font-scale" class="range" type="range" min="85" max="140" step="5" value="100"
-            aria-labelledby="font-heading" aria-describedby="font-scale-value" aria-valuetext="100%" />
-        </div>
+
+          <div id="classic-variant" class="variant-row hidden" aria-hidden="true">
+            <span id="classic-variant-label" class="field-label">Вариант Classic</span>
+            <div class="segmented" role="group" aria-labelledby="classic-variant-label">
+              <button type="button" class="segment" data-variant-value="dark" aria-pressed="false">Тёмная</button>
+              <button type="button" class="segment" data-variant-value="light" aria-pressed="false">Светлая</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel" aria-labelledby="accent-heading">
+          <div class="panel-head">
+            <h2 id="accent-heading" class="panel-title">Акцентный цвет</h2>
+            <output id="accent-value" class="value-text" for="accent-hex">авто</output>
+          </div>
+
+          <div class="accent-swatches" role="group" aria-label="Быстрый выбор акцента">
+            <button class="swatch" type="button" data-accent="#60a5fa" style="--swatch:#60a5fa" aria-label="Синий #60a5fa" aria-pressed="false"></button>
+            <button class="swatch" type="button" data-accent="#34d399" style="--swatch:#34d399" aria-label="Зелёный #34d399" aria-pressed="false"></button>
+            <button class="swatch" type="button" data-accent="#a78bfa" style="--swatch:#a78bfa" aria-label="Фиолетовый #a78bfa" aria-pressed="false"></button>
+            <button class="swatch" type="button" data-accent="#f59e0b" style="--swatch:#f59e0b" aria-label="Оранжевый #f59e0b" aria-pressed="false"></button>
+            <button class="swatch" type="button" data-accent="#f43f5e" style="--swatch:#f43f5e" aria-label="Розовый #f43f5e" aria-pressed="false"></button>
+            <button class="swatch" type="button" data-accent="#38bdf8" style="--swatch:#38bdf8" aria-label="Голубой #38bdf8" aria-pressed="false"></button>
+          </div>
+
+          <div class="accent-inputs">
+            <input id="accent-color" class="color-input" type="color" value="#60a5fa" aria-label="Выбрать акцентный цвет" />
+            <input id="accent-hex" class="text-input" type="text" maxlength="7" placeholder="#60a5fa" spellcheck="false" aria-label="Акцентный цвет в формате HEX" />
+            <button id="accent-reset" class="ghost-btn" type="button">По умолчанию</button>
+          </div>
+        </section>
+
+        <section class="panel" aria-labelledby="font-heading">
+          <div class="panel-head">
+            <h2 id="font-heading" class="panel-title">Масштаб шрифта</h2>
+            <div class="value-row">
+              <output id="font-scale-value" class="value-text" for="font-scale">100%</output>
+              <button id="font-scale-reset" class="icon-reset" type="button" title="Сбросить к 100%" aria-label="Сбросить масштаб к 100%">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M3 12a9 9 0 1 0 3.2-6.9"></path>
+                  <path d="M3 4v5h5"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div class="range-row">
+            <input id="font-scale" class="range" type="range" min="85" max="140" step="5" value="100"
+              aria-labelledby="font-heading" aria-describedby="font-scale-value" aria-valuetext="100%" />
+          </div>
+        </section>
+
+        <section class="panel" aria-labelledby="opacity-heading">
+          <div class="panel-head">
+            <h2 id="opacity-heading" class="panel-title">Прозрачность окна</h2>
+            <output id="opacity-value" class="value-text" for="opacity">100%</output>
+          </div>
+          <div class="range-row">
+            <input id="opacity" class="range" type="range" min="60" max="100" step="5" value="100"
+              aria-labelledby="opacity-heading" aria-describedby="opacity-value" aria-valuetext="100%" />
+          </div>
+        </section>
+
+        <section class="panel" aria-labelledby="radius-heading">
+          <div class="panel-head">
+            <h2 id="radius-heading" class="panel-title">Скругление углов</h2>
+            <output id="corner-radius-value" class="value-text" for="corner-radius">12px</output>
+          </div>
+          <div class="range-row">
+            <input id="corner-radius" class="range" type="range" min="0" max="24" step="2" value="12"
+              aria-labelledby="radius-heading" aria-describedby="corner-radius-value" aria-valuetext="12px" />
+          </div>
+        </section>
+
+        <section class="panel" aria-labelledby="density-heading">
+          <h2 id="density-heading" class="panel-title">Плотность</h2>
+          <div class="segmented segmented-wide" role="group" aria-labelledby="density-heading">
+            <button type="button" class="segment" data-density="compact" aria-pressed="false">Компактно</button>
+            <button type="button" class="segment" data-density="comfortable" aria-pressed="false">Обычно</button>
+            <button type="button" class="segment" data-density="spacious" aria-pressed="false">Просторно</button>
+          </div>
+        </section>
+
+        <section class="panel" aria-labelledby="behavior-heading">
+          <h2 id="behavior-heading" class="panel-title">Поведение окна</h2>
+          <div class="switch-list">
+            <div class="switch-row">
+              <span id="always-on-top-label" class="field-label">Поверх всех окон</span>
+              <button id="always-on-top" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="always-on-top-label"></button>
+            </div>
+            <div class="switch-row">
+              <span id="open-at-login-label" class="field-label">Запускать при входе в Windows</span>
+              <button id="open-at-login" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="open-at-login-label"></button>
+            </div>
+          </div>
+        </section>
       </section>
 
-      <section class="panel" aria-labelledby="opacity-heading">
-        <div class="panel-head">
-          <h2 id="opacity-heading" class="panel-title">Прозрачность окна</h2>
-          <output id="opacity-value" class="value-text" for="opacity">100%</output>
-        </div>
-        <div class="range-row">
-          <input id="opacity" class="range" type="range" min="60" max="100" step="5" value="100"
-            aria-labelledby="opacity-heading" aria-describedby="opacity-value" aria-valuetext="100%" />
-        </div>
-      </section>
+      <section id="panel-builder" class="tabpanel hidden" role="tabpanel" aria-labelledby="tab-builder">
+        <section class="panel" aria-labelledby="mode-heading">
+          <h2 id="mode-heading" class="panel-title">Форм-фактор</h2>
+          <div class="mode-grid" role="group" aria-labelledby="mode-heading">
+            <button class="mode-btn" type="button" data-mode="full" aria-pressed="false">
+              <span class="mode-name">Полный</span>
+              <span class="mode-size">400×640</span>
+            </button>
+            <button class="mode-btn" type="button" data-mode="compact" aria-pressed="false">
+              <span class="mode-name">Компактный</span>
+              <span class="mode-size">330×270</span>
+            </button>
+            <button class="mode-btn" type="button" data-mode="minibar" aria-pressed="false">
+              <span class="mode-name">Мини-бар</span>
+              <span class="mode-size">480×48</span>
+            </button>
+            <button class="mode-btn" type="button" data-mode="pill" aria-pressed="false">
+              <span class="mode-name">Пилюля</span>
+              <span class="mode-size">196×42</span>
+            </button>
+          </div>
+        </section>
 
-      <section class="panel" aria-labelledby="behavior-heading">
-        <h2 id="behavior-heading" class="panel-title">Поведение окна</h2>
-        <div class="switch-list">
-          <div class="switch-row">
-            <span id="always-on-top-label" class="field-label">Поверх всех окон</span>
-            <button id="always-on-top" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="always-on-top-label"></button>
+        <section class="panel" aria-labelledby="blocks-heading">
+          <div class="panel-head">
+            <h2 id="blocks-heading" class="panel-title">Блоки</h2>
+            <span class="panel-hint">Порядок сверху вниз</span>
           </div>
-          <div class="switch-row">
-            <span id="open-at-login-label" class="field-label">Запускать при входе в Windows</span>
-            <button id="open-at-login" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="open-at-login-label"></button>
+
+          <div id="block-list" class="block-list">
+            <article class="block-card" data-block="context_hero">
+              <div class="block-head">
+                <h3 class="block-title">Контекст</h3>
+                <div class="block-actions">
+                  <button class="block-move block-up" type="button" data-move="-1" aria-label="Поднять блок «Контекст»">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"></path><path d="M5 12l7-7 7 7"></path></svg>
+                  </button>
+                  <button class="block-move block-down" type="button" data-move="1" aria-label="Опустить блок «Контекст»">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"></path><path d="M19 12l-7 7-7-7"></path></svg>
+                  </button>
+                  <button class="switch" type="button" role="switch" data-block-toggle="context_hero" aria-checked="true" aria-label="Показывать блок «Контекст»"></button>
+                </div>
+              </div>
+              <div class="block-options">
+                <div class="option-row">
+                  <span class="option-label">Недавние чаты</span>
+                  <button class="switch" type="button" role="switch" data-option="show_recent" aria-checked="true" aria-label="Показывать недавние чаты"></button>
+                </div>
+                <div class="option-row">
+                  <span class="option-label">Сколько показывать</span>
+                  <input id="recent-count" class="text-input text-input-number" type="number" min="0" max="5" step="1" value="3" aria-label="Количество недавних чатов" />
+                </div>
+                <div class="option-row">
+                  <span class="option-label">Пороги контекста</span>
+                  <button class="switch" type="button" role="switch" data-option="show_thresholds" aria-checked="true" aria-label="Показывать пороги контекста"></button>
+                </div>
+              </div>
+            </article>
+
+            <article class="block-card" data-block="quotas_grid">
+              <div class="block-head">
+                <h3 class="block-title">Лимиты</h3>
+                <div class="block-actions">
+                  <button class="block-move block-up" type="button" data-move="-1" aria-label="Поднять блок «Лимиты»">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"></path><path d="M5 12l7-7 7 7"></path></svg>
+                  </button>
+                  <button class="block-move block-down" type="button" data-move="1" aria-label="Опустить блок «Лимиты»">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"></path><path d="M19 12l-7 7-7-7"></path></svg>
+                  </button>
+                  <button class="switch" type="button" role="switch" data-block-toggle="quotas_grid" aria-checked="true" aria-label="Показывать блок «Лимиты»"></button>
+                </div>
+              </div>
+              <div class="block-options">
+                <div class="option-row">
+                  <span class="option-label">Gemini</span>
+                  <button class="switch" type="button" role="switch" data-option="show_gemini" aria-checked="true" aria-label="Показывать квоты Gemini"></button>
+                </div>
+                <div class="option-row">
+                  <span class="option-label">Сторонние модели</span>
+                  <button class="switch" type="button" role="switch" data-option="show_3p" aria-checked="true" aria-label="Показывать сторонние модели"></button>
+                </div>
+                <div class="option-row">
+                  <span class="option-label">Таймер обновления</span>
+                  <button class="switch" type="button" role="switch" data-option="show_countdown" aria-checked="true" aria-label="Показывать таймер обновления"></button>
+                </div>
+              </div>
+            </article>
+
+            <article class="block-card" data-block="zcode_card">
+              <div class="block-head">
+                <h3 class="block-title">ZCode</h3>
+                <div class="block-actions">
+                  <button class="block-move block-up" type="button" data-move="-1" aria-label="Поднять блок «ZCode»">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"></path><path d="M5 12l7-7 7 7"></path></svg>
+                  </button>
+                  <button class="block-move block-down" type="button" data-move="1" aria-label="Опустить блок «ZCode»">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"></path><path d="M19 12l-7 7-7-7"></path></svg>
+                  </button>
+                  <button class="switch" type="button" role="switch" data-block-toggle="zcode_card" aria-checked="true" aria-label="Показывать блок «ZCode»"></button>
+                </div>
+              </div>
+              <div class="block-options">
+                <div class="option-row">
+                  <span class="option-label">Полоса баланса</span>
+                  <button class="switch" type="button" role="switch" data-option="show_balance_bar" aria-checked="true" aria-label="Показывать полосу баланса"></button>
+                </div>
+              </div>
+            </article>
           </div>
-        </div>
+        </section>
+
+        <section class="panel" aria-labelledby="json-heading">
+          <h2 id="json-heading" class="panel-title">Экспорт / импорт пресета (JSON)</h2>
+          <div class="io-actions">
+            <button id="export-json" class="ghost-btn" type="button">Скопировать JSON</button>
+            <button id="import-apply" class="primary-btn" type="button">Применить</button>
+          </div>
+          <textarea id="import-json" class="json-area" rows="5" spellcheck="false" aria-label="JSON пресета" aria-describedby="json-status" placeholder='{"schema_version":1,"theme":"paper"}'></textarea>
+          <p id="json-status" class="json-status" role="status"></p>
+        </section>
       </section>
     </main>
 

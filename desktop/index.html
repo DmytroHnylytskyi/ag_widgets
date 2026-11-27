@@ -42,32 +42,35 @@
           </svg>
         </button>
         <button id="menu-btn" class="icon-btn" type="button" title="Меню: свернуть, поверх окон, выход" aria-label="Меню">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <svg class="icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <circle cx="5" cy="12" r="1.25"></circle>
             <circle cx="12" cy="12" r="1.25"></circle>
             <circle cx="19" cy="12" r="1.25"></circle>
           </svg>
+          <span class="icon-glyph" aria-hidden="true">⋯</span>
         </button>
         <button id="min-btn" class="icon-btn" type="button" title="Свернуть в панель задач" aria-label="Свернуть в панель задач">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <svg class="icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M5 12h14"></path>
           </svg>
+          <span class="icon-glyph" aria-hidden="true">−</span>
         </button>
         <button id="quit-btn" class="icon-btn quit" type="button" title="Закрыть AG Widgets" aria-label="Закрыть AG Widgets">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <svg class="icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M6 6l12 12M18 6L6 18"></path>
           </svg>
+          <span class="icon-glyph" aria-hidden="true">×</span>
         </button>
       </div>
     </header>
 
-    <div class="cards-stack">
+    <main id="widget-cards" class="cards-stack">
       <!-- 01 / Context -->
-      <section class="card context-card" id="context-card" aria-live="polite">
+      <section class="card context-card" id="context-card" data-block="context_hero" aria-live="polite">
         <div class="card-topline">
           <span class="serial">01 / CONTEXT</span>
           <span class="card-heading">Контекст</span>
-          <span id="ctx-level-badge" class="status-badge level-idle">—</span>
+          <span id="ctx-level-pill" class="status-pill level-idle">—</span>
           <span class="material" id="ctx-material">Нет сессии</span>
         </div>
 
@@ -124,7 +127,7 @@
       </section>
 
       <!-- 02 / Quotas -->
-      <section class="card quota-card" aria-live="polite">
+      <section class="card quota-card" data-block="quotas_grid" aria-live="polite">
         <div class="card-topline">
           <span class="serial">02 / LIMITS</span>
           <span class="card-heading">Лимиты · остаток</span>
@@ -138,7 +141,7 @@
       </section>
 
       <!-- 03 / ZCode -->
-      <section class="card zcode-card" id="zcode-card" aria-live="polite">
+      <section class="card zcode-card" id="zcode-card" data-block="zcode_card" aria-live="polite">
         <div class="card-topline">
           <span class="serial">03 / ACCESS</span>
           <span class="card-heading">ZCode</span>
@@ -163,6 +166,27 @@
           <button id="zcode-login" class="zcode-action" type="button">Войти в Z.ai</button>
         </div>
       </section>
+    </main>
+
+    <div id="compact-strip" class="compact-strip hidden" role="group" aria-label="Краткая сводка">
+      <span id="strip-level-dot" class="strip-dot" aria-hidden="true"></span>
+      <span id="strip-ctx" class="strip-text">—</span>
+      <span id="strip-quota" class="strip-text strip-quota">—</span>
+      <span id="strip-zcode" class="strip-text strip-zcode">—</span>
+      <button id="strip-refresh-btn" class="icon-btn strip-btn" type="button" title="Обновить данные" aria-label="Обновить данные">
+        <svg class="icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
+          <path d="M21 3v6h-6"></path>
+        </svg>
+        <span class="icon-glyph" aria-hidden="true">⟳</span>
+      </button>
+      <button id="strip-settings-btn" class="icon-btn strip-btn" type="button" title="Настройки" aria-label="Настройки">
+        <svg class="icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+        <span class="icon-glyph" aria-hidden="true">⚙</span>
+      </button>
     </div>
 
     <footer class="widget-footer" aria-hidden="true">

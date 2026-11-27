@@ -13,7 +13,17 @@ const { refreshMenu, showContextMenu, loginItemOptions } = require('./tray');
 const ZCODE_WEB_URL = 'https://zcode.z.ai/';
 
 /** Appearance keys that live in `appearance.json` (window flags do not). */
-const APPEARANCE_KEYS = ['theme', 'classic_variant', 'font_scale', 'opacity'];
+const APPEARANCE_KEYS = [
+  'theme',
+  'classic_variant',
+  'custom_accent',
+  'corner_radius',
+  'density',
+  'preset_mode',
+  'blocks',
+  'font_scale',
+  'opacity',
+];
 
 /** Fixed enum of external targets; the renderer can never pass a raw path or URL. */
 const EXTERNAL_ACTIONS = {
@@ -60,6 +70,14 @@ function buildSettingsSnapshot() {
     systemDark,
     alwaysOnTop,
     openAtLogin,
+    /** Size constraints of the current form factor (used by the Settings window). */
+    bounds: appearance.formFactorBounds(settings.preset_mode),
+    /** Built-in presets in display order, without their patches. */
+    presets: appearance.PRESET_IDS.map((id) => ({
+      id,
+      label: appearance.BUILT_IN_PRESETS[id].label,
+      hint: appearance.BUILT_IN_PRESETS[id].hint,
+    })),
   };
 }
 
@@ -228,7 +246,49 @@ function registerIpc() {
       }
       const snapshot = buildSettingsSnapshot();
       windowApi.applyAppearanceToWindows(snapshot);
+      refreshMenu();
       return snapshot;
+    }),
+  );
+
+  // --- Widget builder (presets, export/import) -----------------------------
+
+  ipcMain.handle(
+    'agw:apply-preset',
+    fromTrustedWindow((_event, id) => {
+      const presetId = typeof id === 'string' ? id.trim() : '';
+      const next = presetId ? appearance.applyPreset(presetId) : null;
+      if (!next) return { ok: false, error: 'Unknown preset' };
+      const snapshot = buildSettingsSnapshot();
+      windowApi.applyAppearanceToWindows(snapshot);
+      refreshMenu();
+      return { ok: true, snapshot };
+    }),
+  );
+
+  ipcMain.handle(
+    'agw:export-appearance',
+    fromTrustedWindow(() => ({
+      ok: true,
+      json: appearance.exportAppearanceJson(appearance.loadAppearance()),
+    })),
+  );
+
+  ipcMain.handle(
+    'agw:import-appearance',
+    fromTrustedWindow((_event, json) => {
+      const result = appearance.importAppearanceJson(json);
+      if (!result.ok) return result;
+      try {
+        appearance.saveAppearance(result.appearance);
+      } catch (error) {
+        logError('importAppearance', error);
+        return { ok: false, error: 'Не удалось сохранить настройки', code: 'invalid' };
+      }
+      const snapshot = buildSettingsSnapshot();
+      windowApi.applyAppearanceToWindows(snapshot);
+      refreshMenu();
+      return { ok: true, snapshot };
     }),
   );
 }

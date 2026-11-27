@@ -19,6 +19,79 @@
     light: { theme: 'classic', classic_variant: 'light', effectiveTheme: 'classic-light', systemDark: false },
   };
   const APPEARANCE_THEMES = ['system', 'graphite', 'paper', 'oled', 'glass', 'classic'];
+  const DENSITIES = ['compact', 'comfortable', 'spacious'];
+  const PRESET_MODES = ['full', 'compact', 'minibar', 'pill'];
+
+  /** Fresh default block list (deep, so presets never share arrays). */
+  function defaultBlocks() {
+    return [
+      {
+        id: 'context_hero',
+        enabled: true,
+        options: { show_recent: true, recent_count: 3, show_thresholds: true },
+      },
+      {
+        id: 'quotas_grid',
+        enabled: true,
+        options: { show_gemini: true, show_3p: true, show_countdown: true },
+      },
+      { id: 'zcode_card', enabled: true, options: { show_balance_bar: true } },
+    ];
+  }
+
+  /** Local mirror of the six built-in preset patches for design QA. */
+  const PRESETS = {
+    full: {
+      theme: 'system',
+      preset_mode: 'full',
+      density: 'comfortable',
+      blocks: defaultBlocks(),
+    },
+    compact: {
+      preset_mode: 'compact',
+      density: 'compact',
+      blocks: [
+        {
+          id: 'context_hero',
+          enabled: true,
+          options: { show_recent: false, recent_count: 3, show_thresholds: false },
+        },
+        {
+          id: 'quotas_grid',
+          enabled: true,
+          options: { show_gemini: true, show_3p: true, show_countdown: true },
+        },
+        { id: 'zcode_card', enabled: true, options: { show_balance_bar: true } },
+      ],
+    },
+    minibar: { preset_mode: 'minibar', density: 'compact', corner_radius: 12 },
+    pill: { preset_mode: 'pill', density: 'compact', corner_radius: 20 },
+    paper: {
+      theme: 'paper',
+      preset_mode: 'full',
+      corner_radius: 14,
+      custom_accent: null,
+    },
+    classic: {
+      theme: 'classic',
+      classic_variant: 'dark',
+      preset_mode: 'full',
+      corner_radius: 10,
+      density: 'comfortable',
+      custom_accent: null,
+      blocks: defaultBlocks(),
+    },
+  };
+
+  function cloneJson(value) {
+    return JSON.parse(JSON.stringify(value));
+  }
+
+  /** `?mode=` lookup; anything unknown falls back to the full layout. */
+  function presetModeFrom(raw) {
+    const key = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
+    return PRESET_MODES.indexOf(key) !== -1 ? key : 'full';
+  }
 
   /** `?theme=` lookup; falls back to Classic Dark for old preview links. */
   function themePreset(raw) {
@@ -298,13 +371,19 @@
       state.activeChat = { id: 'preview-main', title: 'Example Session · Orbit App' };
     }
 
-    const preset = themePreset(new URLSearchParams(location.search).get('theme'));
+    const search = new URLSearchParams(location.search);
+    const preset = themePreset(search.get('theme'));
     const appearance = {
       schema_version: 1,
       theme: preset.theme,
       classic_variant: preset.classic_variant,
+      custom_accent: null,
+      corner_radius: 12,
       font_scale: 1,
       opacity: 1,
+      density: 'comfortable',
+      preset_mode: presetModeFrom(search.get('mode')),
+      blocks: defaultBlocks(),
     };
     const settings = {
       systemDark: preset.systemDark,
@@ -354,6 +433,13 @@
       return Math.min(max, Math.max(min, Math.round(num * 20) / 20));
     }
 
+    function clampCorner(value) {
+      if (value === null || value === undefined || value === '') return null;
+      const num = Number(value);
+      if (!Number.isFinite(num)) return null;
+      return Math.min(24, Math.max(0, Math.round(num / 2) * 2));
+    }
+
     function updateSettings(patch) {
       const next = patch && typeof patch === 'object' ? patch : {};
       if (typeof next.theme === 'string') {
@@ -363,6 +449,25 @@
       if (next.classic_variant === 'dark' || next.classic_variant === 'light') {
         appearance.classic_variant = next.classic_variant;
       }
+      if (next.custom_accent === null) {
+        appearance.custom_accent = null;
+      } else if (
+        typeof next.custom_accent === 'string' &&
+        /^#[0-9a-fA-F]{6}$/.test(next.custom_accent.trim())
+      ) {
+        appearance.custom_accent = next.custom_accent.trim().toLowerCase();
+      }
+      const cornerRadius = clampCorner(next.corner_radius);
+      if (cornerRadius !== null) appearance.corner_radius = cornerRadius;
+      if (typeof next.density === 'string') {
+        const density = next.density.trim().toLowerCase();
+        if (DENSITIES.indexOf(density) !== -1) appearance.density = density;
+      }
+      if (typeof next.preset_mode === 'string') {
+        const mode = next.preset_mode.trim().toLowerCase();
+        if (PRESET_MODES.indexOf(mode) !== -1) appearance.preset_mode = mode;
+      }
+      if (Array.isArray(next.blocks)) appearance.blocks = next.blocks;
       const fontScale = clampStep(next.font_scale, 0.85, 1.4);
       if (fontScale !== null) appearance.font_scale = fontScale;
       const opacity = clampStep(next.opacity, 0.6, 1);
@@ -376,9 +481,39 @@
       appearance.schema_version = 1;
       appearance.theme = 'system';
       appearance.classic_variant = 'dark';
+      appearance.custom_accent = null;
+      appearance.corner_radius = 12;
       appearance.font_scale = 1;
       appearance.opacity = 1;
+      appearance.density = 'comfortable';
+      appearance.preset_mode = 'full';
+      appearance.blocks = defaultBlocks();
       return Promise.resolve(emit());
+    }
+
+    /** Apply one of the built-in preset patches locally (no disk in preview). */
+    function applyPreset(presetId) {
+      const key = typeof presetId === 'string' ? presetId.trim().toLowerCase() : '';
+      const preset = PRESETS[key];
+      if (!preset) return Promise.resolve({ ok: false, error: 'Неизвестный пресет' });
+      Object.assign(appearance, cloneJson(preset));
+      return Promise.resolve(emit());
+    }
+
+    function exportAppearance() {
+      return { ok: true, json: JSON.stringify(appearance, null, 2) };
+    }
+
+    /** Parse and shallow-merge a pasted appearance; never throws. */
+    function importAppearance(json) {
+      try {
+        const parsed = JSON.parse(json);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('bad');
+        Object.assign(appearance, parsed);
+        return Promise.resolve({ ok: true, snapshot: emit() });
+      } catch {
+        return Promise.resolve({ ok: false, error: 'Некорректный JSON' });
+      }
     }
 
     return {
@@ -397,6 +532,9 @@
       getSettings: () => Promise.resolve(snapshot()),
       updateSettings,
       resetAppearance,
+      applyPreset,
+      exportAppearance,
+      importAppearance,
       openSettings: () => Promise.resolve({ ok: true }),
       onAppearanceUpdate: (cb) => {
         if (typeof cb !== 'function') return () => {};

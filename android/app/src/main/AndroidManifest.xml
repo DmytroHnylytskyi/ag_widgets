@@ -24,6 +24,17 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".ui.widget.WidgetConfigActivity"
+            android:exported="true"
+            android:label="Настройка виджета"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.AGWidgets">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
+
         <receiver
             android:name=".widget.LimitsWidgetReceiver"
             android:exported="true">

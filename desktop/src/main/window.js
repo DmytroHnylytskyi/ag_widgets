@@ -7,14 +7,20 @@ const { readAllState, readJson, writeJsonAtomic } = require('./storage');
 const { logError } = require('./logger');
 const appearance = require('./appearance');
 
-const WINDOW_WIDTH = 400;
-const WINDOW_HEIGHT = 640;
-const SETTINGS_WIDTH = 390;
-const SETTINGS_HEIGHT = 540;
+/** Settings window: two tabs fit without a horizontal scrollbar. */
+const SETTINGS_WIDTH = 430;
+const SETTINGS_HEIGHT = 620;
 /** Gap between the widget and the Settings window. */
 const SETTINGS_GAP = 12;
 /** Minimum slice of the title bar that must stay on screen while dragging. */
 const TITLEBAR_GRAB = 48;
+/** Debounce for persisting the window size after a user resize. */
+const RESIZE_SAVE_DELAY = 200;
+/**
+ * Window after a programmatic move during which a spurious `resize` must not
+ * reach `window-state.json` (a drag at fractional DPI used to persist +1..2px).
+ */
+const MOVE_RESIZE_GUARD_MS = 150;
 const ASSETS_DIR = path.join(__dirname, '..', '..', 'assets');
 
 /**
@@ -27,6 +33,18 @@ const ACRYLIC_THEMES = new Set(['glass-dark', 'glass-light', 'classic-dark', 'cl
 let mainWindow = null;
 let settingsWindow = null;
 let moveSaveTimer = null;
+let resizeSaveTimer = null;
+/** Timestamp until which `resize` events are treated as a side effect of a move. */
+let ignoreResizeUntil = 0;
+/**
+ * Size captured for the duration of one drag. `getBounds()` comes back rounded
+ * at fractional display scale, so feeding a fresh reading into every move lets
+ * the error accumulate (+1..2px per animation frame at 125%/150%). The drag
+ * therefore reuses the size it started with (D-01).
+ */
+let dragSize = null;
+/** Form factor currently applied to the widget; null until the first apply. */
+let currentMode = null;
 
 /** Windows dark mode flag; never throws outside Electron. */
 function systemPrefersDark() {
@@ -59,13 +77,46 @@ function windowBackgroundOptions(effectiveTheme) {
   return { backgroundColor: appearance.windowBackgroundColor(effectiveTheme) };
 }
 
+/** Clamp a desired size into the form factor limits of `mode`. */
+function clampSizeToMode(mode, width, height) {
+  const limits = appearance.formFactorBounds(mode);
+  const toPx = (value, fallback) =>
+    Number.isFinite(value) ? Math.round(value) : Math.round(fallback);
+  return {
+    width: Math.min(limits.maxWidth, Math.max(limits.minWidth, toPx(width, limits.width))),
+    height: Math.min(limits.maxHeight, Math.max(limits.minHeight, toPx(height, limits.height))),
+  };
+}
+
+/** Per-mode window sizes from `window-state.json`, revalidated on every read. */
+function normalizeModeBounds(raw) {
+  const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const result = {};
+  for (const mode of appearance.PRESET_MODES) {
+    const saved = source[mode] && typeof source[mode] === 'object' ? source[mode] : {};
+    result[mode] = clampSizeToMode(mode, saved.width, saved.height);
+  }
+  return result;
+}
+
+/** Form factor currently applied to the widget; disk value before the first apply. */
+function activeMode() {
+  if (currentMode) return currentMode;
+  try {
+    return currentAppearance().settings.preset_mode;
+  } catch {
+    return appearance.DEFAULT_APPEARANCE.preset_mode;
+  }
+}
+
 function loadWindowState() {
   const saved = readJson(windowStatePath());
-  if (!saved) return { x: undefined, y: undefined, alwaysOnTop: true };
+  const source = saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : {};
   return {
-    x: typeof saved.x === 'number' ? saved.x : undefined,
-    y: typeof saved.y === 'number' ? saved.y : undefined,
-    alwaysOnTop: typeof saved.alwaysOnTop === 'boolean' ? saved.alwaysOnTop : true,
+    x: typeof source.x === 'number' ? source.x : undefined,
+    y: typeof source.y === 'number' ? source.y : undefined,
+    alwaysOnTop: typeof source.alwaysOnTop === 'boolean' ? source.alwaysOnTop : true,
+    modeBounds: normalizeModeBounds(source.modeBounds),
   };
 }
 
@@ -76,12 +127,19 @@ function saveWindowState(extra = {}) {
   try {
     const previous = loadWindowState();
     const [x, y] = window.getPosition();
+    const [width, height] = window.getSize();
+    const mode = activeMode();
     writeJsonAtomic(windowStatePath(), {
       ...previous,
       ...extra,
       x,
       y,
       alwaysOnTop: window.isAlwaysOnTop(),
+      modeBounds: {
+        ...previous.modeBounds,
+        ...(extra.modeBounds || {}),
+        [mode]: { width, height },
+      },
     });
   } catch (error) {
     logError('window-state', error);
@@ -94,9 +152,27 @@ function clearPendingMoveSave() {
   moveSaveTimer = null;
 }
 
-/** Persist the current bounds immediately, skipping the `moved` debounce. */
+function clearPendingResizeSave() {
+  if (!resizeSaveTimer) return;
+  clearTimeout(resizeSaveTimer);
+  resizeSaveTimer = null;
+}
+
+/** Persist the size 200 ms after the last resize event. */
+function scheduleResizeSave() {
+  clearTimeout(resizeSaveTimer);
+  resizeSaveTimer = setTimeout(() => {
+    resizeSaveTimer = null;
+    saveWindowState();
+  }, RESIZE_SAVE_DELAY);
+}
+
+/** Persist the current bounds immediately, skipping the debounced saves. */
 function saveCurrentWindowBounds() {
   clearPendingMoveSave();
+  clearPendingResizeSave();
+  // The drag is over: the next one captures the size that is live by then.
+  dragSize = null;
   saveWindowState();
 }
 
@@ -130,9 +206,11 @@ function clampToWorkArea(x, y, width, height) {
         y + height > area.y + 40 &&
         y < area.y + area.height - 40,
     ) || primary;
+  // Integer screen coordinates only: fractional DIP positions saved to
+  // `window-state.json` are re-rounded by Electron on restore.
   return {
-    x: Math.max(target.x, Math.min(x, target.x + target.width - width)),
-    y: Math.max(target.y, Math.min(y, target.y + target.height - height)),
+    x: Math.round(Math.max(target.x, Math.min(x, target.x + target.width - width))),
+    y: Math.round(Math.max(target.y, Math.min(y, target.y + target.height - height))),
   };
 }
 
@@ -144,30 +222,42 @@ function pushState(state) {
 function createWindow() {
   const saved = loadWindowState();
   const { settings: currentSettings, effectiveTheme } = currentAppearance();
+  const mode = currentSettings.preset_mode;
+  const limits = appearance.formFactorBounds(mode);
+  const stored = saved.modeBounds[mode];
+  const size = clampSizeToMode(
+    mode,
+    stored ? stored.width : limits.width,
+    stored ? stored.height : limits.height,
+  );
   const display = screen.getPrimaryDisplay().workArea;
-  const defaultX = display.x + display.width - WINDOW_WIDTH - 24;
-  const defaultY = display.y + 24;
-  const position = isPositionOnAnyDisplay(saved.x, saved.y, WINDOW_WIDTH, WINDOW_HEIGHT)
-    ? clampToWorkArea(saved.x, saved.y, WINDOW_WIDTH, WINDOW_HEIGHT)
-    : { x: defaultX, y: defaultY };
+  const defaultPosition = clampToWorkArea(
+    display.x + display.width - size.width - 24,
+    display.y + 24,
+    size.width,
+    size.height,
+  );
+  const position = isPositionOnAnyDisplay(saved.x, saved.y, size.width, size.height)
+    ? clampToWorkArea(saved.x, saved.y, size.width, size.height)
+    : defaultPosition;
 
   mainWindow = new BrowserWindow({
-    width: WINDOW_WIDTH,
-    height: WINDOW_HEIGHT,
+    width: size.width,
+    height: size.height,
     x: position.x,
     y: position.y,
     frame: false,
     title: 'AG Widgets',
-    resizable: false,
+    resizable: true,
     minimizable: true,
     maximizable: false,
     fullscreenable: false,
     icon: path.join(ASSETS_DIR, 'icon-256.png'),
     alwaysOnTop: saved.alwaysOnTop,
     hasShadow: true,
-    // The glass themes sit on the Windows acrylic material (transparent base
-    // color + material); the dense themes (graphite/paper/oled) use their own
-    // solid base color so a black acrylic frame can never show through.
+    // The glass/classic themes sit on the Windows acrylic material (transparent
+    // base color + material); the dense themes (graphite/paper/oled) use their
+    // own solid base color so a black acrylic frame can never show through.
     transparent: false,
     ...windowBackgroundOptions(effectiveTheme),
     show: false,
@@ -180,6 +270,9 @@ function createWindow() {
   });
 
   if (saved.alwaysOnTop) mainWindow.setAlwaysOnTop(true, 'floating');
+
+  // Size limits and the restored size always follow the saved form factor.
+  applyFormFactor(mode);
 
   // Window opacity is part of the appearance settings; Electron may refuse a
   // negative or unsupported value on some platforms, so it never propagates.
@@ -198,21 +291,48 @@ function createWindow() {
   );
   session.defaultSession.setPermissionCheckHandler(() => false);
 
-  // The widget is a fixed-size surface: dragging or a DPI change must not resize it.
-  mainWindow.setMinimumSize(WINDOW_WIDTH, WINDOW_HEIGHT);
-  mainWindow.setMaximumSize(WINDOW_WIDTH, WINDOW_HEIGHT);
+  // The widget is resizable, but only inside its current form factor. The OS
+  // already blocks min/max violations; a forced size (DPI change, programmatic
+  // resize) is clamped back here, and every resize is persisted debounced.
   let sizeGuard = false;
-  const enforceSize = () => {
-    if (!mainWindow || mainWindow.isDestroyed() || sizeGuard) return;
-    const [width, height] = mainWindow.getSize();
-    if (width === WINDOW_WIDTH && height === WINDOW_HEIGHT) return;
+  const enforceFormFactor = () => {
+    if (sizeGuard) return;
+    const window = getWindow();
+    if (!window || window.isMinimized()) return;
+    const mode = activeMode();
+    const limits = appearance.formFactorBounds(mode);
+    const [width, height] = window.getSize();
+    if (width <= 0 || height <= 0) return;
+    if (
+      width >= limits.minWidth &&
+      width <= limits.maxWidth &&
+      height >= limits.minHeight &&
+      height <= limits.maxHeight
+    ) {
+      return;
+    }
+    const target = clampSizeToMode(mode, width, height);
     sizeGuard = true;
-    mainWindow.setSize(WINDOW_WIDTH, WINDOW_HEIGHT, false);
+    window.setSize(target.width, target.height, false);
     setTimeout(() => {
       sizeGuard = false;
     }, 60);
   };
-  mainWindow.on('resize', enforceSize);
+  mainWindow.on('resize', () => {
+    enforceFormFactor();
+    if (Date.now() < ignoreResizeUntil) return;
+    // A real user resize (or a form-factor change) makes the cached drag size
+    // stale, so the next drag re-reads it once.
+    dragSize = null;
+    scheduleResizeSave();
+  });
+  // `resized` fires once the user lets go of the frame; both paths share the
+  // same 200 ms debounce so only the final size reaches the disk.
+  mainWindow.on('resized', () => {
+    if (Date.now() < ignoreResizeUntil) return;
+    dragSize = null;
+    scheduleResizeSave();
+  });
   mainWindow.on('maximize', () => mainWindow.unmaximize());
   mainWindow.on('enter-full-screen', () => mainWindow.setFullScreen(false));
 
@@ -236,6 +356,9 @@ function createWindow() {
   // widget, so it is destroyed here too; otherwise the process would linger.
   // The minimize button and the tray menu keep the widget alive instead.
   mainWindow.on('closed', () => {
+    clearPendingMoveSave();
+    clearPendingResizeSave();
+    dragSize = null;
     mainWindow = null;
     closeSettingsWindow();
   });
@@ -275,11 +398,12 @@ function settingsWindowPosition() {
     ? screen.getDisplayMatching(mainBounds)
     : screen.getPrimaryDisplay();
   const area = display.workArea;
+  const full = appearance.formFactorBounds('full');
   const bounds = mainBounds || {
-    x: area.x + area.width - WINDOW_WIDTH - 24,
+    x: area.x + area.width - full.width - 24,
     y: area.y + 24,
-    width: WINDOW_WIDTH,
-    height: WINDOW_HEIGHT,
+    width: full.width,
+    height: full.height,
   };
   const rightX = bounds.x + bounds.width + SETTINGS_GAP;
   const leftX = bounds.x - SETTINGS_WIDTH - SETTINGS_GAP;
@@ -374,6 +498,42 @@ function pushAppearance(snapshot) {
   }
 }
 
+/**
+ * Switch the widget to `presetMode`: apply the OS size limits of that form
+ * factor, restore its stored size (or the default one) and nudge the window so
+ * it stays fully inside the work area. Returns true when the mode changed.
+ */
+function applyFormFactor(presetMode) {
+  const mode = appearance.normalizePresetMode(presetMode);
+  const changed = currentMode !== mode;
+  if (changed) clearPendingResizeSave();
+  currentMode = mode;
+
+  const window = getWindow();
+  if (!window) return false;
+
+  const limits = appearance.formFactorBounds(mode);
+  window.setMinimumSize(limits.minWidth, limits.minHeight);
+  window.setMaximumSize(limits.maxWidth, limits.maxHeight);
+  if (!changed) return false;
+
+  const stored = loadWindowState().modeBounds[mode];
+  const target = clampSizeToMode(
+    mode,
+    stored ? stored.width : limits.width,
+    stored ? stored.height : limits.height,
+  );
+  const bounds = window.getBounds();
+  window.setSize(target.width, target.height, false);
+  // The form factor owns the size now; a drag must re-read it.
+  dragSize = null;
+  const position = clampToWorkArea(bounds.x, bounds.y, target.width, target.height);
+  if (position.x !== bounds.x || position.y !== bounds.y) {
+    window.setPosition(position.x, position.y, false);
+  }
+  return true;
+}
+
 /** Switch the widget's acrylic material; older Electron builds ignore it. */
 function applyBackgroundMaterial(window, effectiveTheme) {
   if (typeof window.setBackgroundMaterial !== 'function') return;
@@ -392,6 +552,8 @@ function applyAppearanceToWindows(snapshot) {
     ? '#00000000'
     : appearance.windowBackgroundColor(effectiveTheme);
   const opacity = snapshot.appearance ? snapshot.appearance.opacity : undefined;
+
+  if (snapshot.appearance) applyFormFactor(snapshot.appearance.preset_mode);
 
   const main = getWindow();
   if (main) {
@@ -456,11 +618,14 @@ function moveWindow(dx, dy) {
   const window = getWindow();
   if (!window) return;
   const bounds = window.getBounds();
+  // Freeze the size for the whole drag. `minibar`/`pill` must not grow back to
+  // the `full` layout while being moved, and a fresh `getBounds()` reading on
+  // every tick is exactly what let the fractional-DPI rounding accumulate: at
+  // 125%/150% each frame added 1-2px to both dimensions (electron#10862).
+  if (!dragSize) dragSize = { width: bounds.width, height: bounds.height };
   const next = {
     x: Math.round(bounds.x + dx),
     y: Math.round(bounds.y + dy),
-    width: WINDOW_WIDTH,
-    height: WINDOW_HEIGHT,
   };
 
   // Clamp against the union of every display's work area instead of snapping to
@@ -474,10 +639,20 @@ function moveWindow(dx, dy) {
 
   // Keep TITLEBAR_GRAB pixels of the title bar visible horizontally and the
   // whole title strip below the desktop top edge; on displays shorter than the
-  // window the top edge is never pushed off screen.
-  next.x = Math.max(left - WINDOW_WIDTH + TITLEBAR_GRAB, Math.min(next.x, right - TITLEBAR_GRAB));
-  next.y = Math.max(top, Math.min(next.y, bottom - TITLEBAR_GRAB));
-  window.setBounds(next, false);
+  // window the top edge is never pushed off screen. The frozen size is used
+  // here too, so the clamp matches what the OS is about to be told.
+  next.x = Math.round(
+    Math.max(left - dragSize.width + TITLEBAR_GRAB, Math.min(next.x, right - TITLEBAR_GRAB)),
+  );
+  next.y = Math.round(Math.max(top, Math.min(next.y, bottom - TITLEBAR_GRAB)));
+
+  // The cached size (not a fresh reading) is the only width/height the OS sees.
+  // A stray `resize` from the move is kept out of the saved state by the guard.
+  ignoreResizeUntil = Date.now() + MOVE_RESIZE_GUARD_MS;
+  window.setBounds(
+    { x: next.x, y: next.y, width: dragSize.width, height: dragSize.height },
+    false,
+  );
 }
 
 module.exports = {

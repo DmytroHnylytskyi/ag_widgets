@@ -56,6 +56,57 @@ body {
   color: var(--text-secondary);
 }
 
+/* --- Tabs --------------------------------------------------------------- */
+
+/* Underline tabs on the header hairline: no pill inside a pill, no padding
+   that squeezes the label against a border. */
+.tabs {
+  display: flex;
+  gap: var(--space-4);
+  margin-top: var(--space-2);
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
+.tab {
+  flex: 0 0 auto;
+  min-width: 0;
+  min-height: var(--control-md);
+  padding: 0 var(--space-1);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  transition: color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.tab:hover {
+  color: var(--text);
+}
+
+.tab[aria-selected="true"] {
+  background: transparent;
+  color: var(--accent-ink);
+  /* The underline sits on the header hairline itself. */
+  box-shadow: inset 0 -1px 0 var(--accent), 0 1px 0 var(--accent);
+}
+
+.tabpanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
 /* The scrollbar lives inside the page gutter so panels, tabs and the footer
    share one right edge (S1-005). */
 .settings-main {
@@ -67,15 +118,30 @@ body {
   padding: var(--space-3) 10px var(--space-3) var(--space-4);
   overflow-x: hidden;
   overflow-y: auto;
-  /* Keep the standard scrollbar properties unset so Chromium honors the
-     `::-webkit-scrollbar*` rules below and paints no stepper arrows (D-08). */
+  /* Keep `scrollbar-width`/`scrollbar-color` unset so Chromium honors the
+     `::-webkit-scrollbar*` rules below and suppresses Windows ▲/▼ steppers (D-08). */
   scrollbar-gutter: stable;
 }
 
-/* The settings page scrolls with the wheel; the bar itself stays hidden so
-   Windows never paints its legacy ▲/▼ stepper buttons (D-08). */
 .settings-main::-webkit-scrollbar {
+  width: 6px;
+  display: block;
+}
+
+.settings-main::-webkit-scrollbar-thumb {
+  background: var(--card-border);
+  border-radius: var(--r-bar);
+}
+
+.settings-main::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Windows Chromium draws legacy ▲/▼ steppers on a styled scrollbar (D-08). */
+::-webkit-scrollbar-button {
   display: none;
+  width: 0;
+  height: 0;
 }
 
 .panel {
@@ -123,6 +189,46 @@ body {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+}
+
+/* --- Presets ------------------------------------------------------------ */
+
+.preset-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-1);
+}
+
+.preset-btn {
+  min-width: 0;
+  min-height: var(--control-md);
+  padding: 0 var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--card) 55%, transparent);
+  border: 1px solid var(--card-border);
+  border-radius: var(--r-control);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-body);
+  font-weight: 500;
+  line-height: 18px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+.preset-btn:hover {
+  border-color: var(--accent);
+}
+
+.preset-btn.is-active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, var(--card));
+  color: var(--accent-ink);
 }
 
 /* --- Theme picker ------------------------------------------------------- */
@@ -314,6 +420,383 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* --- Builder: form factor ----------------------------------------------- */
+
+.mode-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* 8px keeps the 2px focus ring of one tile off its neighbour (D-14). */
+  gap: var(--space-2);
+}
+
+.mode-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0;
+  min-width: 0;
+  /* Two text lines are 32px tall; 44px leaves breathing room (D-14). */
+  min-height: 44px;
+  padding: var(--space-1) var(--space-2);
+  background: color-mix(in srgb, var(--card) 55%, transparent);
+  border: 1px solid var(--card-border);
+  border-radius: var(--r-control);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.mode-btn:hover {
+  border-color: var(--accent);
+}
+
+.mode-btn[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--card));
+}
+
+.mode-name {
+  font-size: var(--fs-body);
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.mode-size {
+  font-size: var(--fs-caption);
+  line-height: 14px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.mode-btn[aria-pressed="true"] .mode-name {
+  color: var(--accent-ink);
+}
+
+/* --- Builder: block list ------------------------------------------------ */
+
+/* Flat sections inside the panel, separated by a hairline (S1-042). */
+.block-list {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.block-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-2) 0;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+}
+
+.block-card:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.block-card:last-child {
+  padding-bottom: 0;
+}
+
+.block-card.is-off {
+  opacity: 1;
+}
+
+.block-card.is-off .block-title {
+  color: var(--text-secondary);
+}
+
+.block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.block-title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--fs-section);
+  line-height: 20px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.block-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.block-move {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-sm);
+  height: var(--control-sm);
+  padding: 0;
+  background: var(--badge);
+  border: 1px solid var(--field-border);
+  border-radius: var(--r-control);
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.block-move:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.block-move:disabled {
+  color: var(--text-muted);
+  border-color: var(--line);
+  background: transparent;
+  cursor: default;
+  opacity: 1;
+}
+
+.block-card .switch {
+  width: 36px;
+  height: 20px;
+}
+
+.block-card .switch::after {
+  width: 14px;
+  height: 14px;
+  top: 2px;
+  left: 2px;
+}
+
+.block-card .switch[aria-checked="true"]::after {
+  transform: translateX(16px);
+}
+
+.block-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--line);
+}
+
+.option-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-width: 0;
+  min-height: var(--control-sm);
+}
+
+.option-label {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--fs-body);
+  line-height: 18px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* --- Builder: JSON export / import -------------------------------------- */
+
+.io-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.io-actions .ghost-btn {
+  flex: 1 1 auto;
+}
+
+.json-area {
+  width: 100%;
+  min-width: 0;
+  max-height: 140px;
+  min-height: 88px;
+  padding: var(--space-2);
+  background: var(--badge);
+  border: 1px solid var(--field-border);
+  border-radius: var(--r-control);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+  line-height: 16px;
+  resize: vertical;
+  user-select: text;
+  overflow-x: hidden;
+}
+
+.json-area::placeholder {
+  color: var(--text-secondary);
+}
+
+/* Native resize grip redrawn in the system's own ink (S1-039). */
+.json-area::-webkit-resizer {
+  background-image: linear-gradient(135deg, transparent 55%, var(--text-muted) 55%);
+  background-size: 7px 7px;
+  background-repeat: no-repeat;
+  background-position: bottom right;
+}
+
+.json-area:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.json-area[aria-invalid="true"] {
+  border-color: var(--risk);
+  box-shadow: inset 0 0 0 1px var(--risk);
+}
+
+.json-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 16px;
+  font-size: var(--fs-body);
+  line-height: 18px;
+  color: var(--text-secondary);
+}
+
+.json-status.is-error {
+  color: var(--risk);
+}
+
+.json-status.is-error::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--risk);
+  flex: 0 0 auto;
+}
+
+.json-status.is-ok {
+  color: var(--ok);
+}
+
+.json-status.is-ok::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ok);
+  flex: 0 0 auto;
+}
+
+/* --- Accent ------------------------------------------------------------- */
+
+.accent-swatches {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* 28x28 hit target, 20x20 visible circle; hover is a ring, never a scale. */
+.swatch {
+  position: relative;
+  flex: 0 0 auto;
+  width: var(--control-sm);
+  height: var(--control-sm);
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.swatch::before {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  background: var(--swatch, var(--accent));
+  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+}
+
+.swatch:hover::before {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--swatch, var(--accent)) 45%, transparent);
+}
+
+.swatch[aria-pressed="true"]::before {
+  box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--accent-ink);
+}
+
+.accent-inputs {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.accent-inputs .text-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.color-input {
+  flex: 0 0 auto;
+  width: var(--control-md);
+  height: var(--control-md);
+  padding: 3px;
+  background: var(--badge);
+  border: 1px solid var(--field-border);
+  border-radius: var(--r-control);
+  cursor: pointer;
+}
+
+.color-input::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.color-input::-webkit-color-swatch {
+  border: 0;
+  border-radius: 4px;
+}
+
+.text-input {
+  min-width: 0;
+  min-height: var(--control-md);
+  padding: 0 var(--space-2);
+  background: var(--badge);
+  border: 1px solid var(--field-border);
+  border-radius: var(--r-control);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-body);
+  font-variant-numeric: tabular-nums;
+  user-select: text;
+}
+
+.text-input::placeholder {
+  color: var(--text-secondary);
+}
+
+.text-input-number {
+  flex: 0 0 auto;
+  width: 64px;
+}
+
+.text-input[aria-invalid="true"] {
+  border-color: var(--risk);
+  box-shadow: inset 0 0 0 1px var(--risk);
+}
+
 /* --- Sliders ------------------------------------------------------------ */
 
 .range-row {
@@ -582,11 +1065,21 @@ body {
 
 /* Focus is a different colour from "selected": a keyboard user never confuses
    the two (S1-055). */
+.tab:focus-visible,
+.preset-btn:focus-visible,
 .theme-option:focus-visible,
 .segment:focus-visible,
+.mode-btn:focus-visible,
+.block-move:focus-visible,
+.swatch:focus-visible,
+.text-input:focus-visible,
+.color-input:focus-visible,
+.ghost-btn:focus-visible,
+.primary-btn:focus-visible,
 .reset-btn:focus-visible,
 .icon-reset:focus-visible,
 .switch:focus-visible,
+.json-area:focus-visible,
 .range:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;

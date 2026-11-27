@@ -25,24 +25,24 @@
   }
 
   /**
-   * Classic shows the level badge next to the model name in `.meta-top` (the
+   * Classic shows the level pill next to the model name in `.meta-top` (the
    * author's 1:1 layout), modern themes show it in the card topline. One node
    * with one id is moved between the two slots, so no markup is duplicated
    * (D-07).
    */
-  function placeLevelBadge(badge) {
-    if (!badge) return;
+  function placeLevelPill(pill) {
+    if (!pill) return;
     const card = document.getElementById('context-card');
     if (!card) return;
     const classic = isClassicTheme();
     const target = classic ? card.querySelector('.meta-top') : card.querySelector('.card-topline');
-    if (!target || badge.parentElement === target) return;
+    if (!target || pill.parentElement === target) return;
     const material = document.getElementById('ctx-material');
     if (!classic && material && material.parentElement === target) {
-      target.insertBefore(badge, material);
+      target.insertBefore(pill, material);
       return;
     }
-    target.appendChild(badge);
+    target.appendChild(pill);
   }
 
   function currentConversation(context, activeChat) {
@@ -60,6 +60,33 @@
   /** Trimmed snippet text, or "" for anything that is not a string. */
   function formatSnippet(snippet) {
     return typeof snippet === 'string' ? snippet.trim() : '';
+  }
+
+  /** Normalized block options; missing/invalid fields use the author defaults. */
+  function normalizeOptions(options) {
+    const source = options && typeof options === 'object' && !Array.isArray(options) ? options : {};
+    let recentCount = 3;
+    const rawCount = source.recent_count;
+    if (rawCount !== null && rawCount !== undefined && rawCount !== '') {
+      const numeric = typeof rawCount === 'number' ? rawCount : Number(rawCount);
+      if (Number.isFinite(numeric)) recentCount = Math.max(0, Math.min(5, Math.round(numeric)));
+    }
+    return {
+      showRecent: source.show_recent !== false,
+      recentCount,
+      showThresholds: source.show_thresholds !== false,
+    };
+  }
+
+  /** Colour token for a context level, shared with the compact strip. */
+  function levelColor(level) {
+    return level === 'red'
+      ? 'var(--risk)'
+      : level === 'yellow'
+        ? 'var(--warn)'
+        : level === 'green'
+          ? 'var(--ok)'
+          : 'var(--glow)';
   }
 
   /** Model label for a recent chat; a missing model is "", never "undefined". */
@@ -277,7 +304,7 @@
     }
   }
 
-  /** Legend follows the backend thresholds, or shows a dash while the window is unknown. */
+  /** Footer legend follows the backend thresholds, or shows a dash while the window is unknown. */
   function renderLegend(info) {
     const known = Boolean(info && info.known);
     const yellow = known ? Math.round(info.yellowPct) : null;
@@ -304,7 +331,7 @@
     if (zone) zone.classList.toggle('hidden', !visible);
   }
 
-  function renderEmpty(info) {
+  function renderEmpty(info, options) {
     const hasChat = Boolean(info.activeChat && info.activeChat.id);
     const chatTitle = info.activeChat && info.activeChat.title ? info.activeChat.title : '';
     const card = document.getElementById('context-card');
@@ -319,7 +346,7 @@
     const workspacePrefixEmpty = workspaceEl ? workspaceEl.querySelector('.ws-prefix') : null;
     if (workspaceNameEmpty) workspaceNameEmpty.textContent = hasChat ? 'Выбранный чат' : '';
     if (workspacePrefixEmpty) workspacePrefixEmpty.classList.add('hidden');
-    if (workspaceEl) workspaceEl.classList.toggle('hidden', !hasChat);
+    workspaceEl.classList.toggle('hidden', !hasChat);
     const snippetEl = document.getElementById('ctx-snippet');
     snippetEl.textContent = hasChat
       ? 'Ответьте модели, чтобы увидеть контекст'
@@ -329,13 +356,13 @@
     const alert = document.getElementById('ctx-alert');
     alert.classList.add('hidden');
 
-    // An empty scale, a 0 % marker and a lone "—" badge read as broken data, so
+    // An empty scale, a 0 % marker and a lone "—" pill read as broken data, so
     // the empty state keeps one message and one action (S1-044).
-    const badge = document.getElementById('ctx-level-badge');
-    placeLevelBadge(badge);
-    badge.className = 'status-badge level-idle';
-    badge.textContent = '—';
-    badge.classList.add('hidden');
+    const pill = document.getElementById('ctx-level-pill');
+    placeLevelPill(pill);
+    pill.className = 'status-pill level-idle';
+    pill.textContent = '—';
+    pill.classList.add('hidden');
 
     const ring = document.getElementById('ring-progress');
     ring.style.strokeDashoffset = CIRCUMFERENCE;
@@ -355,12 +382,12 @@
     setZoneVisible(false);
   }
 
-  function renderRecent(info, chatTitles) {
+  function renderRecent(info, chatTitles, limit) {
     const container = document.getElementById('ctx-recent');
     const others = Object.entries(info.conversations || {})
       .filter(([id]) => id !== info.selectedId)
       .sort((a, b) => String(b[1].updated_at || '').localeCompare(String(a[1].updated_at || '')))
-      .slice(0, 2);
+      .slice(0, Math.max(0, limit));
 
     container.innerHTML = '';
     if (others.length === 0) {
@@ -391,12 +418,13 @@
     }
   }
 
-  function render(context, status, activeChat, chatTitles = {}) {
+  function render(context, status, activeChat, chatTitles = {}, options = {}) {
+    const opts = normalizeOptions(options);
     const info = contextInfo(context, status, activeChat);
     const card = document.getElementById('context-card');
     if (card) card.classList.remove('is-empty');
     if (!info.cur) {
-      renderEmpty(info);
+      renderEmpty(info, opts);
       return;
     }
 
@@ -406,7 +434,8 @@
     document.getElementById('ctx-tokens').textContent = formatTokens(tokens);
     // "занято" (context pressure) vs "осталось" (quota balance): one meaning per
     // widget, spelled out instead of a bare percentage (S1-047). Classic keeps
-    // the author's `72% из 512K`.
+    // the author's `72% из 512K`, the compact ring has no room for words.
+    const compactRing = document.documentElement.dataset.mode === 'compact';
     const tokenSub = document.getElementById('ctx-token-sub');
     if (classic) {
       tokenSub.textContent =
@@ -415,7 +444,7 @@
           : 'окно не задано';
       tokenSub.title = '';
     } else if (typeof pct === 'number') {
-      tokenSub.textContent = `${Math.round(pct)}% занято`;
+      tokenSub.textContent = compactRing ? `${Math.round(pct)}%` : `${Math.round(pct)}% занято`;
       // The modern ring cannot hold the window size next to the percentage, so
       // `512K` stays available through the tooltip (D-07).
       tokenSub.title = window ? `${Math.round(pct)}% из ${formatWindow(window)}` : '';
@@ -437,10 +466,9 @@
           : 0.015;
     ring.style.strokeDashoffset = (CIRCUMFERENCE * (1 - ratio)).toFixed(2);
 
-    const levelColor =
-      level === 'red' ? 'var(--risk)' : level === 'yellow' ? 'var(--warn)' : level === 'green' ? 'var(--ok)' : 'var(--glow)';
-    ring.style.stroke = levelColor;
-    satellite.style.fill = levelColor;
+    const levelStroke = levelColor(level);
+    ring.style.stroke = levelStroke;
+    satellite.style.fill = levelStroke;
     const angle = -Math.PI / 2 + Math.PI * 2 * ratio;
     satellite.setAttribute('cx', (70 + 48 * Math.cos(angle)).toFixed(2));
     satellite.setAttribute('cy', (70 + 48 * Math.sin(angle)).toFixed(2));
@@ -469,21 +497,23 @@
         : 'Без проекта';
     }
     if (workspacePrefix) workspacePrefix.classList.toggle('hidden', !cur.workspace);
-    if (workspaceEl) workspaceEl.classList.remove('hidden');
+    workspaceEl.classList.remove('hidden');
     const snippetEl = document.getElementById('ctx-snippet');
     const snippet = formatSnippet(cur.snippet);
     snippetEl.textContent = snippet;
     snippetEl.classList.toggle('hidden', !snippet);
 
-    const badge = document.getElementById('ctx-level-badge');
-    placeLevelBadge(badge);
-    badge.className = `status-badge level-${level === 'unknown' ? 'idle' : level}`;
-    badge.textContent =
+    const pill = document.getElementById('ctx-level-pill');
+    placeLevelPill(pill);
+    pill.className = `status-pill level-${level === 'unknown' ? 'idle' : level}`;
+    pill.textContent =
       level === 'red' ? 'Риск' : level === 'yellow' ? 'Внимание' : level === 'green' ? 'Норма' : '—';
-    badge.classList.toggle('hidden', level === 'unknown');
+    pill.classList.toggle('hidden', level === 'unknown');
 
     const alert = document.getElementById('ctx-alert');
-    if (level === 'red') {
+    if (!opts.showThresholds) {
+      alert.classList.add('hidden');
+    } else if (level === 'red') {
       alert.className = 'ctx-alert';
       alert.textContent = 'Пора /compact';
       alert.classList.remove('hidden');
@@ -495,10 +525,19 @@
       alert.classList.add('hidden');
     }
 
-    setZoneVisible(true);
-    renderZone(info);
-    renderLegend(info);
-    renderRecent(info, chatTitles);
+    setZoneVisible(opts.showThresholds);
+    if (opts.showThresholds) {
+      renderZone(info);
+      renderLegend(info);
+    }
+
+    if (opts.showRecent) {
+      renderRecent(info, chatTitles, opts.recentCount);
+    } else {
+      const recent = document.getElementById('ctx-recent');
+      recent.innerHTML = '';
+      recent.classList.add('hidden');
+    }
   }
 
   AGW.context = {
@@ -507,6 +546,7 @@
     render,
     formatSnippet,
     formatRecentChat,
+    levelColor,
   };
 
   if (typeof module !== 'undefined' && module.exports) {

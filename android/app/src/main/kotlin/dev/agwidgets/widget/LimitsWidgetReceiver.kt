@@ -42,4 +42,10 @@ class LimitsWidgetReceiver : GlanceAppWidgetReceiver() {
             RefreshWorker.cancelPeriodic(context)
         }
     }
+
+    override fun onDeleted(context: Context, appWidgetIds: IntArray) {
+        super.onDeleted(context, appWidgetIds)
+        // Drop per-widget configs together with the widget instances themselves.
+        appWidgetIds.forEach { WidgetConfigStore.delete(context, it) }
+    }
 }

@@ -1,10 +1,8 @@
 package dev.agwidgets.widget
 
 import android.content.Context
-import android.content.res.Configuration
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
@@ -16,9 +14,9 @@ import androidx.glance.action.ActionParameters
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
+import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.SizeMode
 import androidx.glance.appwidget.action.ActionCallback
-import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
 import androidx.glance.appwidget.updateAll
@@ -33,9 +31,6 @@ import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
 import androidx.glance.layout.padding
-import androidx.glance.layout.width
-import androidx.glance.text.FontFamily
-import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
@@ -43,29 +38,18 @@ import dev.agwidgets.BuildConfig
 import dev.agwidgets.MainActivity
 import dev.agwidgets.R
 import dev.agwidgets.data.AgStatus
-import dev.agwidgets.data.ContextSummary
-import dev.agwidgets.data.QuotaBucket
 import dev.agwidgets.data.StatusStore
-import dev.agwidgets.data.ZCodeStatus
-import dev.agwidgets.ui.formatCountdownShort
-import dev.agwidgets.ui.formatK
-import dev.agwidgets.ui.formatUnits
-import dev.agwidgets.ui.formatWindow
 import dev.agwidgets.ui.parseInstant
-import dev.agwidgets.ui.prettyModel
 import dev.agwidgets.ui.theme.AgColors
 import dev.agwidgets.ui.theme.ResolvedAgTheme
 import dev.agwidgets.ui.theme.agColorsFor
-import dev.agwidgets.ui.theme.resolveAgTheme
 import dev.agwidgets.work.performRefresh
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.Locale
+import java.time.Duration
+import java.time.Instant
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.math.roundToInt
 
 class RefreshActionCallback : ActionCallback {
     override suspend fun onAction(
@@ -95,36 +79,52 @@ class RefreshActionCallback : ActionCallback {
     }
 }
 
-/** Widget height buckets used to adapt spacing and extra sections. */
+/** Widget size buckets: which blocks survive at which height. */
 internal enum class WidgetLayoutMode { COMPACT, STANDARD, EXPANDED }
 
 /**
- * Height in dp below 165 is COMPACT, 165..215 inclusive is STANDARD and
- * anything above 215 is EXPANDED. Locked by `WidgetRefreshTest`.
+ * Height buckets that decide how many blocks survive.
+ *
+ * Calibrated against real launcher cells, not against the tallest layout the
+ * builder can produce: a 4×2 widget on this device is ~110–155 dp tall, so the
+ * old `165 dp` COMPACT threshold demoted every 4×2 to a 2-block stub.
+ *  - `< 95 dp`      → COMPACT   (4×1 / 2×1: two blocks, one quota row)
+ *  - `95..185 dp`   → STANDARD  (4×2: three blocks, 2×2 quota grid)
+ *  - `> 185 dp`     → EXPANDED  (4×3+: every enabled block)
  */
 internal fun widgetLayoutMode(heightDp: Float): WidgetLayoutMode = when {
-    heightDp < 165f -> WidgetLayoutMode.COMPACT
-    heightDp <= 215f -> WidgetLayoutMode.STANDARD
+    heightDp < 95f -> WidgetLayoutMode.COMPACT
+    heightDp <= 185f -> WidgetLayoutMode.STANDARD
     else -> WidgetLayoutMode.EXPANDED
 }
+
+/** Data older than two refresh periods (30 min) is still shown, but flagged. */
+private const val STALE_AFTER_MINUTES = 30L
+
+/** Translucency floor so a 0% widget does not turn unreadable text into soup. */
+private const val MIN_SURFACE_ALPHA = 0.15f
 
 class LimitsWidget : GlanceAppWidget() {
     override val sizeMode: SizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
+        // A widget created before the config-store landed has no stored id;
+        // -1 simply resolves to the default config.
+        val appWidgetId = runCatching {
+            GlanceAppWidgetManager(context).getAppWidgetId(id)
+        }.getOrDefault(-1)
+        val config = WidgetConfigStore.get(context, appWidgetId)
+        val resolved = WidgetConfigStore.resolveWidgetTheme(context, config)
         val status = StatusStore.getMergedStatus(context)
-        val systemDark = (context.resources.configuration.uiMode and
-            Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-        val resolved = resolveAgTheme(StatusStore.getThemeMode(context), systemDark)
         provideContent {
-            WidgetContent(status = status, resolved = resolved)
+            WidgetContent(status = status, resolved = resolved, config = config)
         }
     }
 }
 
 /**
- * Background drawable for a resolved theme: calm flat surfaces for the modern
- * themes, the author's glass layers for `glass` and `classic`.
+ * Background art for a resolved theme: calm flat surfaces for the modern
+ * themes, the author's glass layers for `classic`.
  */
 private fun widgetBackground(resolved: ResolvedAgTheme): Int = when (resolved.id) {
     "graphite" -> R.drawable.widget_bg_graphite
@@ -135,469 +135,233 @@ private fun widgetBackground(resolved: ResolvedAgTheme): Int = when (resolved.id
 }
 
 @Composable
-private fun WidgetContent(status: AgStatus?, resolved: ResolvedAgTheme) {
+private fun WidgetContent(status: AgStatus?, resolved: ResolvedAgTheme, config: WidgetConfig) {
     val size = LocalSize.current
-    val mode = widgetLayoutMode(size.height.value)
+    val heightDp = size.height.value
+    val widthDp = size.width.value
+    val mode = widgetLayoutMode(heightDp)
+    val isCompactHeight = mode == WidgetLayoutMode.COMPACT
+    val isNarrow = widthDp < 220f
+    // Horizontal padding and the vertical rhythm are two separate scales: the
+    // old shared `16 dp` step was used as the gap between every block too.
+    val horizontalPadding = if (isCompactHeight) 8 else densityPadding(config.density)
+    val verticalPadding = if (isCompactHeight) 6 else densityVerticalPadding(config.density)
+    val gap = if (isCompactHeight) 4 else blockGap(config.density)
+    val contentWidthDp = (widthDp - 2 * horizontalPadding).coerceAtLeast(24f)
+
     // Colours are always fixed ARGB values: `system` was already resolved against
     // the current night mode, so every palette is concrete by this point.
-    val colors = agColorsFor(resolved)
-    val fg = ColorProvider(colors.text)
-    val muted = ColorProvider(colors.secondary)
-    val subtle = ColorProvider(colors.muted)
-    val accent = ColorProvider(colors.glow)
-    val thirdAccent = ColorProvider(colors.pink)
-    val divider = ColorProvider(colors.track)
+    val baseColors = agColorsFor(resolved)
+    val accentColor: Color = config.customAccent?.let { raw ->
+        runCatching { Color(android.graphics.Color.parseColor(raw)) }.getOrNull()
+    } ?: baseColors.glow
+    val colors: AgColors = if (accentColor == baseColors.glow) {
+        baseColors
+    } else {
+        baseColors.copy(glow = accentColor, violet = accentColor)
+    }
 
-    Box(
-        modifier = GlanceModifier
-            .fillMaxSize()
-            .clickable(actionStartActivity<MainActivity>())
-    ) {
-        Image(
-            provider = ImageProvider(widgetBackground(resolved)),
-            contentDescription = null,
-            contentScale = ContentScale.FillBounds,
-            modifier = GlanceModifier.fillMaxSize()
-        )
+    val opacity = config.opacity.coerceIn(0f, 1f)
+    val cornerRadius = config.cornerRadiusDp.dp
+
+    // Classic keeps the author's glass art as the base plate; every other theme
+    // is a flat surface. Translucency is one continuous slider value in both
+    // cases — no `opacity == 0.95 && radius == 10` special case.
+    val useArtBackdrop = colors.isClassic
+    val surfaceAlpha = if (useArtBackdrop) 1f else opacity.coerceAtLeast(MIN_SURFACE_ALPHA)
+
+    val rootModifier = GlanceModifier
+        .fillMaxSize()
+        .clickable(actionStartActivity<MainActivity>())
+    val surfaceModifier = if (useArtBackdrop) {
+        rootModifier.cornerRadius(cornerRadius)
+    } else {
+        rootModifier
+            .background(ColorProvider(colors.surface.copy(alpha = surfaceAlpha)))
+            .cornerRadius(cornerRadius)
+    }
+
+    Box(modifier = surfaceModifier) {
+        if (useArtBackdrop) {
+            Image(
+                provider = ImageProvider(widgetBackground(resolved)),
+                contentDescription = null,
+                contentScale = ContentScale.FillBounds,
+                modifier = GlanceModifier.fillMaxSize().cornerRadius(cornerRadius)
+            )
+            // Smooth veil instead of a hard cut at 90%: at the default 95%
+            // opacity the author's `glass_bg` renders untouched (veil == 0) and
+            // only a deliberate reduction of the slider dims it.
+            val veil = ((0.95f - opacity) / 0.95f * 0.85f).coerceIn(0f, 0.85f)
+            if (veil > 0.02f) {
+                Box(
+                    modifier = GlanceModifier
+                        .fillMaxSize()
+                        .background(ColorProvider(colors.background.copy(alpha = veil)))
+                        .cornerRadius(cornerRadius)
+                ) {}
+            }
+        }
+
+        // Empty state: one message and one action, never a skeleton of dashes.
+        if (status == null) {
+            Box(
+                modifier = GlanceModifier.fillMaxSize().padding(12.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    modifier = GlanceModifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        text = "Нет данных — откройте AG Widgets",
+                        style = TextStyle(
+                            color = ColorProvider(colors.secondary),
+                            fontSize = scaledSp(11f, config.fontScale, colors).sp,
+                        ),
+                        maxLines = 2,
+                    )
+                    Spacer(GlanceModifier.height(8.dp))
+                    InlineRefreshButton(colors = colors, fontScale = config.fontScale)
+                }
+            }
+            return@Box
+        }
 
         Column(
             modifier = GlanceModifier
                 .fillMaxSize()
-                .padding(start = 15.dp, end = 12.dp, top = 6.dp, bottom = 12.dp),
+                .padding(
+                    start = horizontalPadding.dp,
+                    end = horizontalPadding.dp,
+                    top = verticalPadding.dp,
+                    bottom = verticalPadding.dp,
+                ),
             verticalAlignment = Alignment.Top
         ) {
-            // Header
-            Row(
-                modifier = GlanceModifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "●",
-                    style = TextStyle(color = accent, fontSize = 9.sp)
-                )
-                Spacer(modifier = GlanceModifier.width(5.dp))
-                // The author's `AGW / 01` code stays exclusively in Classic.
-                if (resolved.isClassic) {
-                    Text(
-                        text = "AGW / 01",
-                        style = TextStyle(
-                            color = accent,
-                            fontSize = 8.sp,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Medium
-                        ),
-                        maxLines = 1
-                    )
-                    Spacer(modifier = GlanceModifier.width(7.dp))
-                }
-                Text(
-                    text = "Antigravity" + (status?.planTier?.let { " · $it" } ?: ""),
-                    style = TextStyle(color = fg, fontSize = 12.sp, fontWeight = FontWeight.Bold),
-                    maxLines = 1,
-                    modifier = GlanceModifier.defaultWeight()
-                )
-                RefreshIcon(tint = subtle, background = ColorProvider(colors.track))
-                Spacer(modifier = GlanceModifier.width(5.dp))
-                Text(
-                    text = formatTimeShort(status?.pcUpdatedAt ?: status?.updatedAt) ?: "—",
-                    style = TextStyle(
-                        color = subtle,
-                        fontSize = 9.sp,
-                        fontFamily = FontFamily.Monospace
-                    ),
-                    maxLines = 1
-                )
-            }
+            val headerEnabled = config.isEnabled(WidgetBlockId.HEADER)
+            val enabledBlocks = visibleBlocks(config, mode, zcodeEnabled = BuildConfig.ZCODE_ENABLED)
+            val inlineHost = enabledBlocks.firstOrNull()?.id ?: config.firstEnabled()?.id
+            val stale = isStale(status)
+            // Classic 4×2 has no CONTEXT block; the author kept its compact
+            // reading on the ZCode line instead of leaving the row half empty.
+            val trailingContext = status.contextSummary
+                ?.takeIf { colors.isClassic && !config.isEnabled(WidgetBlockId.CONTEXT) }
 
-            Spacer(modifier = GlanceModifier.height(7.dp))
-            Spacer(
-                modifier = GlanceModifier
-                    .fillMaxWidth()
-                    .height(1.dp)
-                    .background(divider)
-            )
-            Spacer(modifier = GlanceModifier.height(8.dp))
-
-            if (status == null) {
-                Box(
-                    modifier = GlanceModifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "Нет данных · откройте приложение",
-                        style = TextStyle(color = muted, fontSize = 12.sp),
-                        maxLines = 1
-                    )
-                }
-            } else {
-                // Gemini slots never use 3p- buckets; CLAUDE/GPT slots use only 3p- buckets.
-                val geminiBuckets = status.buckets.filter { !it.id.startsWith("3p-") }
-                val fiveHour = geminiBuckets.firstOrNull { it.id.startsWith("gemini-") && it.kind == "5h" }
-                    ?: geminiBuckets.firstOrNull { it.kind == "5h" }
-                val weekly = geminiBuckets.firstOrNull { it.id.startsWith("gemini-") && it.kind == "weekly" }
-                    ?: geminiBuckets.firstOrNull { it.kind == "weekly" }
-                val thirdFiveHour = status.buckets.firstOrNull { it.id.startsWith("3p-") && it.kind == "5h" }
-                val thirdWeekly = status.buckets.firstOrNull { it.id.startsWith("3p-") && it.kind == "weekly" }
-
-                Column(modifier = GlanceModifier.fillMaxWidth()) {
-                    // Classic keeps the author's campaign vocabulary (`GEMINI 5H` / `WK`);
-                    // the modern palettes use the app-scale wording.
-                    val geminiFiveHourLabel = if (resolved.isClassic) "GEMINI 5H" else "Gemini 5 ч"
-                    val geminiWeeklyLabel = if (resolved.isClassic) "GEMINI WK" else "Gemini 7 дн"
-                    val thirdFiveHourLabel = if (resolved.isClassic) "CLAUDE/GPT 5H" else "Claude / GPT 5 ч"
-                    val thirdWeeklyLabel = if (resolved.isClassic) "CLAUDE/GPT WK" else "Claude / GPT 7 дн"
-                    Row(modifier = GlanceModifier.fillMaxWidth()) {
-                        QuotaCell(
-                            label = geminiFiveHourLabel,
-                            bucket = fiveHour,
-                            colors = colors,
-                            muted = muted,
-                            accent = accent,
-                            modifier = GlanceModifier.defaultWeight()
-                        )
-                        Spacer(modifier = GlanceModifier.width(7.dp))
-                        QuotaCell(
-                            label = geminiWeeklyLabel,
-                            bucket = weekly,
-                            colors = colors,
-                            muted = muted,
-                            accent = accent,
-                            modifier = GlanceModifier.defaultWeight()
-                        )
+            enabledBlocks.forEachIndexed { index, block ->
+                val isLast = index == enabledBlocks.lastIndex
+                if (index > 0) {
+                    // Anchor the closing ZCode row to the bottom edge: without
+                    // the weight spacer it floated between the 2nd and 3rd grid
+                    // rows of a 4×3 cell with an empty third below it.
+                    if (isLast && block.id == WidgetBlockId.ZCODE) {
+                        Spacer(GlanceModifier.defaultWeight())
                     }
-                    Spacer(modifier = GlanceModifier.height(6.dp))
-                    Row(modifier = GlanceModifier.fillMaxWidth()) {
-                        QuotaCell(
-                            label = thirdFiveHourLabel,
-                            bucket = thirdFiveHour,
-                            colors = colors,
-                            muted = muted,
-                            accent = thirdAccent,
-                            modifier = GlanceModifier.defaultWeight()
-                        )
-                        Spacer(modifier = GlanceModifier.width(7.dp))
-                        QuotaCell(
-                            label = thirdWeeklyLabel,
-                            bucket = thirdWeekly,
-                            colors = colors,
-                            muted = muted,
-                            accent = thirdAccent,
-                            modifier = GlanceModifier.defaultWeight()
-                        )
-                    }
+                    Spacer(GlanceModifier.height(gap.dp))
                 }
-
-                // No weight-based filler: a flexible spacer turns into a visible
-                // hole as soon as the host grants more height than we need.
-                when (mode) {
-                    WidgetLayoutMode.COMPACT ->
-                        Spacer(modifier = GlanceModifier.height(6.dp))
-                    WidgetLayoutMode.STANDARD ->
-                        Spacer(modifier = GlanceModifier.height(10.dp))
-                    WidgetLayoutMode.EXPANDED -> {
-                        val contextSummary = status.contextSummary
-                        if (contextSummary?.tokens != null) {
-                            ContextSection(
-                                ctx = contextSummary,
-                                fg = fg,
-                                muted = muted,
-                                subtle = subtle,
-                                colors = colors
-                            )
+                // Presets without a header (context_compact / zcode_only) host the
+                // single inline ⟳ in their first enabled block instead.
+                val showInlineRefresh = !headerEnabled && block.id == inlineHost
+                when (block.id) {
+                    WidgetBlockId.HEADER -> HeaderFreshnessAtom(
+                        status = status,
+                        config = config,
+                        colors = colors,
+                        compact = isCompactHeight,
+                        stale = stale,
+                    )
+                    WidgetBlockId.CONTEXT -> ContextBarAtom(
+                        ctx = status.contextSummary,
+                        config = config,
+                        colors = colors,
+                        showInlineRefresh = showInlineRefresh,
+                        barWidthDp = contentWidthDp,
+                    )
+                    WidgetBlockId.ZCODE -> ZCodeAtom(
+                        zcode = status.zcode,
+                        config = config,
+                        colors = colors,
+                        showInlineRefresh = showInlineRefresh,
+                        contentWidthDp = contentWidthDp,
+                        trailingContext = trailingContext,
+                    )
+                    WidgetBlockId.QUOTAS -> {
+                        if (showInlineRefresh) {
+                            Row(
+                                modifier = GlanceModifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Box(modifier = GlanceModifier.defaultWeight()) {
+                                    QuotasAtom(
+                                        status = status,
+                                        config = config,
+                                        colors = colors,
+                                        isCompactHeight = isCompactHeight || isNarrow,
+                                        contentWidthDp = contentWidthDp - 56f,
+                                    )
+                                }
+                                InlineRefreshButton(colors = colors, fontScale = config.fontScale)
+                            }
                         } else {
-                            Spacer(modifier = GlanceModifier.height(10.dp))
-                        }
-                    }
-                }
-
-                Row(
-                    modifier = GlanceModifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (BuildConfig.ZCODE_ENABLED) {
-                        val (zText, zBg) = zcodeChip(status.zcode, colors)
-                        WidgetChip(zText, zBg, fg)
-                    }
-
-                    Spacer(modifier = GlanceModifier.defaultWeight())
-
-                    contextChip(status.contextSummary, colors)?.let { (text, color) ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = text,
-                                style = TextStyle(color = muted, fontSize = 9.5.sp),
-                                maxLines = 1
-                            )
-                            Spacer(modifier = GlanceModifier.width(4.dp))
-                            Text(
-                                text = "●",
-                                style = TextStyle(color = color, fontSize = 9.sp)
+                            QuotasAtom(
+                                status = status,
+                                config = config,
+                                colors = colors,
+                                isCompactHeight = isCompactHeight || isNarrow,
+                                contentWidthDp = contentWidthDp,
                             )
                         }
                     }
                 }
             }
+
+            // Every block disabled: keep the widget actionable instead of empty.
+            if (enabledBlocks.isEmpty()) {
+                InlineRefreshButton(colors = colors, fontScale = config.fontScale)
+            }
+
+            // A failing collector is a state, not a silent blank card.
+            status.antigravityError?.takeIf { it.isNotBlank() }?.let { error ->
+                Spacer(GlanceModifier.height(gap.dp))
+                Text(
+                    text = fit("Ошибка сбора: $error", 44),
+                    style = TextStyle(
+                        color = ColorProvider(colors.amber),
+                        fontSize = scaledSp(9f, config.fontScale, colors).sp,
+                    ),
+                    maxLines = 1,
+                )
+            }
         }
-    }
-}
-
-@Composable
-private fun RefreshIcon(tint: ColorProvider, background: ColorProvider) {
-    // 42x40 tap target around a small visible pill: the pill alone is too small
-    // to hit reliably, and the clickable modifier must live on the outer box.
-    Box(
-        modifier = GlanceModifier
-            .clickable(actionRunCallback<RefreshActionCallback>())
-            .width(42.dp)
-            .height(40.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Box(
-            modifier = GlanceModifier
-                .width(26.dp)
-                .height(24.dp)
-                .background(background)
-                .cornerRadius(9.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = "⟳",
-                style = TextStyle(
-                    color = tint,
-                    fontSize = 13.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Medium
-                ),
-                maxLines = 1
-            )
-        }
-    }
-}
-
-/** Expand-mode block: active chat model, token usage and its colour-coded bar. */
-@Composable
-private fun ContextSection(
-    ctx: ContextSummary,
-    fg: ColorProvider,
-    muted: ColorProvider,
-    subtle: ColorProvider,
-    colors: AgColors
-) {
-    val tokens = ctx.tokens ?: return
-    val window = ctx.window
-    // NaN/Infinity must never reach the bitmap renderer or the percent label.
-    val pct = (ctx.pct ?: window?.takeIf { it > 0 }?.let { tokens * 100.0 / it })
-        ?.takeIf { it.isFinite() }
-    val fraction = (pct?.div(100.0) ?: 0.0).toFloat().coerceIn(0f, 1f)
-    val barColor: Color = when (ctx.level) {
-        "red" -> colors.rose
-        "yellow" -> colors.amber
-        "unknown" -> colors.muted
-        "green" -> colors.green
-        else -> colors.glow
-    }
-    val trackArgb = colors.track.toArgb()
-
-    Column(
-        modifier = GlanceModifier
-            .fillMaxWidth()
-            .padding(top = 10.dp, bottom = 10.dp)
-    ) {
-        Row(
-            modifier = GlanceModifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "CONTEXT",
-                style = TextStyle(
-                    color = muted,
-                    fontSize = 8.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Medium
-                ),
-                maxLines = 1
-            )
-            Spacer(modifier = GlanceModifier.width(6.dp))
-            Text(
-                text = prettyModel(ctx.model.orEmpty().ifBlank { "—" }),
-                style = TextStyle(color = fg, fontSize = 10.sp, fontWeight = FontWeight.Bold),
-                maxLines = 1,
-                modifier = GlanceModifier.defaultWeight()
-            )
-            Spacer(modifier = GlanceModifier.width(6.dp))
-            Text(
-                text = buildString {
-                    append(formatK(tokens))
-                    append(" / ")
-                    append(window?.let { formatWindow(it) } ?: "—")
-                    pct?.let { append(" (").append(it.roundToInt()).append("%)") }
-                },
-                style = TextStyle(
-                    color = subtle,
-                    fontSize = 9.sp,
-                    fontFamily = FontFamily.Monospace
-                ),
-                maxLines = 1
-            )
-        }
-        Spacer(modifier = GlanceModifier.height(4.dp))
-        Image(
-            provider = ImageProvider(
-                BarRenderer.renderBar(fraction, barColor.toArgb(), trackArgb)
-            ),
-            contentDescription = null,
-            contentScale = ContentScale.FillBounds,
-            modifier = GlanceModifier.fillMaxWidth().height(3.dp)
-        )
-    }
-}
-
-@Composable
-private fun QuotaCell(
-    label: String,
-    bucket: QuotaBucket?,
-    colors: AgColors,
-    muted: ColorProvider,
-    accent: ColorProvider,
-    modifier: GlanceModifier = GlanceModifier
-) {
-    val frac = bucket?.remainingFraction?.toFloat()
-        ?.takeIf { it.isFinite() }
-        ?.coerceIn(0f, 1f)
-    val pct = frac?.let { (it * 100).roundToInt() }
-    // Warning tones only at the very end of a window; healthy buckets keep the group accent.
-    val color: ColorProvider = when {
-        bucket == null -> muted
-        frac != null && frac < 0.08f -> ColorProvider(colors.rose)
-        frac != null && frac < 0.15f -> ColorProvider(colors.amber)
-        else -> accent
-    }
-    // Bitmap bars need plain ARGB values, so they use the palette entries directly.
-    val barColor: Color = when {
-        bucket == null -> colors.muted
-        frac != null && frac < 0.08f -> colors.rose
-        frac != null && frac < 0.15f -> colors.amber
-        else -> colors.glow
-    }
-    val trackArgb = colors.track.toArgb()
-
-    Column(modifier = modifier) {
-        Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = label,
-                style = TextStyle(
-                    color = muted,
-                    fontSize = 9.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Medium
-                ),
-                maxLines = 1,
-                modifier = GlanceModifier.defaultWeight()
-            )
-            Text(
-                text = if (pct == null) "—" else "$pct%",
-                style = TextStyle(color = color, fontSize = 10.sp, fontWeight = FontWeight.Bold),
-                maxLines = 1
-            )
-        }
-        Spacer(modifier = GlanceModifier.height(2.dp))
-        Image(
-            provider = ImageProvider(BarRenderer.renderBar(frac ?: 0f, barColor.toArgb(), trackArgb)),
-            contentDescription = null,
-            contentScale = ContentScale.FillBounds,
-            modifier = GlanceModifier.fillMaxWidth().height(3.dp)
-        )
-        Spacer(modifier = GlanceModifier.height(2.dp))
-        Text(
-            text = formatCountdownShort(bucket?.resetTime, System.currentTimeMillis()) ?: "—",
-            style = TextStyle(
-                // `muted` instead of `subtle`: the countdown sits on the surface and
-                // needs the same contrast as the label, not the dimmest tone.
-                color = muted,
-                fontSize = 9.sp,
-                fontFamily = FontFamily.Monospace
-            ),
-            maxLines = 1
-        )
-    }
-}
-
-@Composable
-private fun WidgetChip(text: String, background: ColorProvider, color: ColorProvider) {
-    Box(
-        modifier = GlanceModifier
-            .background(background)
-            .cornerRadius(12.dp)
-            .padding(horizontal = 8.dp, vertical = 3.dp)
-    ) {
-        Text(
-            text = text,
-            style = TextStyle(color = color, fontSize = 9.5.sp, fontWeight = FontWeight.Medium),
-            maxLines = 1
-        )
     }
 }
 
 /**
- * Chip backgrounds keep the original Classic alphas; modern palettes reuse their
- * semantic accent colours with the same translucency so contrast stays stable.
+ * Blocks that survive the current height bucket.
+ *
+ * Compact widgets used to be clipped by the launcher; now the tail of the list
+ * is dropped by priority so what remains is laid out at full size.
  */
-private fun zcodeChip(z: ZCodeStatus?, colors: AgColors): Pair<String, ColorProvider> {
-    val chipAlpha = if (colors.isDark) 0.27f else 0.14f
-    val neutral = ColorProvider(colors.track)
-    val error = ColorProvider(colors.rose.copy(alpha = chipAlpha))
-    val warn = ColorProvider(colors.amber.copy(alpha = chipAlpha))
-    val coupon = ColorProvider(colors.glow.copy(alpha = if (colors.isDark) 0.40f else 0.12f))
-    val glm = ColorProvider(colors.violet.copy(alpha = if (colors.isDark) 0.20f else 0.12f))
-    if (z == null) return "ZCode: нет данных" to neutral
-    // Local copies keep the nullable checks below readable and smart-cast safe.
-    val remaining = z.remainingUnits
-    val total = z.totalUnits
-    return when {
-        z.isCouponUnknown -> {
-            val text = when (z.errorKind) {
-                "network" -> "ZCode: нет связи"
-                "auth_expired" -> "ZCode: нужен вход"
-                "rate_limited" -> "ZCode: лимит 429"
-                "server_error", "api_changed", "parse_failed" -> "ZCode: ошибка проверки"
-                else -> "ZCode: неизвестно"
-            }
-            val bg = when (z.errorKind) {
-                "network", "rate_limited", "server_error", "api_changed", "parse_failed" -> error
-                else -> warn
-            }
-            text to bg
-        }
-        z.networkError -> "ZCode: нет связи" to error
-        z.method == "api" && z.authOk == false -> "ZCode: нужен вход" to warn
-        z.method == "disabled" -> "ZCode не подключён" to neutral
-        z.isCouponVisible -> "Ваучер доступен!" to coupon
-        remaining != null && (remaining > 0 || (total != null && total > 0)) ->
-            "${z.planName.ifBlank { "ZCode" }} ${formatUnits(remaining)}" to glm
-        !z.running && z.method != "api" -> "ZCode не запущен" to neutral
-        else -> "ZCode: нет ваучера" to neutral
+internal fun visibleBlocks(
+    config: WidgetConfig,
+    mode: WidgetLayoutMode,
+    zcodeEnabled: Boolean = true,
+): List<WidgetBlockConfig> {
+    // The `context` flavour has no ZCode data path: drop the block before the
+    // height-bucket limit so it never consumes a slot or renders the atom.
+    val enabled = config.blocks
+        .filter { it.enabled }
+        .filter { zcodeEnabled || it.id != WidgetBlockId.ZCODE }
+    val limit = when (mode) {
+        WidgetLayoutMode.COMPACT -> 2
+        WidgetLayoutMode.STANDARD -> 3
+        WidgetLayoutMode.EXPANDED -> enabled.size
     }
+    return enabled.take(limit.coerceAtLeast(1))
 }
 
-private fun contextChip(ctx: ContextSummary?, colors: AgColors): Pair<String, ColorProvider>? {
-    val tokens = ctx?.tokens ?: return null
-    // "unknown" must stay neutral grey instead of falling through to green.
-    val color = ColorProvider(
-        when (ctx.level) {
-            "red" -> colors.rose
-            "yellow" -> colors.amber
-            "green" -> colors.green
-            else -> colors.muted
-        }
-    )
-    val pct = ctx.pct?.takeIf { it.isFinite() }?.let { " ${it.roundToInt()}%" } ?: ""
-    val prefix = if (ctx.active) "ЧАТ" else "ПК"
-    return "$prefix ${formatK(tokens)}$pct" to color
-}
-
-private fun formatTimeShort(iso: String?): String? {
-    val instant = parseInstant(iso) ?: return null
-    return DateTimeFormatter.ofPattern("HH:mm", Locale.US)
-        .withZone(ZoneId.systemDefault())
-        .format(instant)
+internal fun isStale(status: AgStatus, nowMs: Long = System.currentTimeMillis()): Boolean {
+    val instant = parseInstant(status.pcUpdatedAt ?: status.updatedAt) ?: return false
+    val minutes = Duration.between(instant, Instant.ofEpochMilli(nowMs)).toMinutes()
+    return minutes > STALE_AFTER_MINUTES
 }

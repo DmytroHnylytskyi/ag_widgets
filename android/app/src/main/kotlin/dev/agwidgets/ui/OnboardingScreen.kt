@@ -75,15 +75,17 @@ internal fun OnboardingScreen(
                     style = AgType.title,
                     color = colors.text,
                 )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = "ANTIGRAVITY · 001",
-                    style = AgType.caption.copy(
-                        fontFamily = FontFamily.Monospace,
-                        letterSpacing = 1.1.sp,
-                    ),
-                    color = colors.muted,
-                )
+                if (colors.isClassic) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "ANTIGRAVITY · 001",
+                        style = AgType.caption.copy(
+                            fontFamily = FontFamily.Monospace,
+                            letterSpacing = 1.1.sp,
+                        ),
+                        color = colors.muted,
+                    )
+                }
             }
         }
 
@@ -168,11 +170,15 @@ internal fun OnboardingScreen(
             } else {
                 "AG Context · только Antigravity"
             },
-            style = AgType.caption.copy(
-                fontFamily = FontFamily.Monospace,
-                letterSpacing = 0.8.sp,
-            ),
-            color = colors.muted.copy(alpha = 0.7f),
+            style = if (colors.isClassic) {
+                AgType.caption.copy(
+                    fontFamily = FontFamily.Monospace,
+                    letterSpacing = 0.8.sp,
+                )
+            } else {
+                AgType.caption
+            },
+            color = if (colors.isClassic) colors.muted.copy(alpha = 0.7f) else colors.muted,
             modifier = Modifier.padding(horizontal = 4.dp),
         )
     }

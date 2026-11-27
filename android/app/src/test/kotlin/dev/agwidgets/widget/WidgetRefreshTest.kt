@@ -19,20 +19,51 @@ class WidgetRefreshTest {
 
     @Test
     fun shortWidgetsUseCompactLayout() {
-        assertEquals(WidgetLayoutMode.COMPACT, widgetLayoutMode(110f))
-        assertEquals(WidgetLayoutMode.COMPACT, widgetLayoutMode(164f))
+        // 4×1 / 2×1 cells live below 95dp.
+        assertEquals(WidgetLayoutMode.COMPACT, widgetLayoutMode(56f))
+        assertEquals(WidgetLayoutMode.COMPACT, widgetLayoutMode(94f))
     }
 
     @Test
     fun mediumWidgetsUseStandardLayoutWithInclusiveBounds() {
-        assertEquals(WidgetLayoutMode.STANDARD, widgetLayoutMode(165f))
-        assertEquals(WidgetLayoutMode.STANDARD, widgetLayoutMode(215f))
+        // Real 4×2 cells are ~110–155dp; 95..185 must stay STANDARD so the
+        // third block (ZCode) is not cut by the launcher.
+        assertEquals(WidgetLayoutMode.STANDARD, widgetLayoutMode(95f))
+        assertEquals(WidgetLayoutMode.STANDARD, widgetLayoutMode(120f))
+        assertEquals(WidgetLayoutMode.STANDARD, widgetLayoutMode(155f))
+        assertEquals(WidgetLayoutMode.STANDARD, widgetLayoutMode(185f))
     }
 
     @Test
     fun tallWidgetsUseExpandedLayout() {
-        assertEquals(WidgetLayoutMode.EXPANDED, widgetLayoutMode(216f))
+        assertEquals(WidgetLayoutMode.EXPANDED, widgetLayoutMode(186f))
         assertEquals(WidgetLayoutMode.EXPANDED, widgetLayoutMode(420f))
+    }
+
+    // ---- visibleBlocks ----
+
+    @Test
+    fun classicFourByTwoKeepsHeaderQuotasAndZCode() {
+        // The regression: a 4×2 landed in COMPACT and lost the ZCode block.
+        listOf(120f, 150f).forEach { heightDp ->
+            val visible = visibleBlocks(WidgetPresets.classic.config, widgetLayoutMode(heightDp))
+                .map { it.id }
+            assertEquals(
+                "Classic 4×2 at ${heightDp}dp must keep all three blocks",
+                listOf(WidgetBlockId.HEADER, WidgetBlockId.QUOTAS, WidgetBlockId.ZCODE),
+                visible,
+            )
+        }
+    }
+
+    @Test
+    fun compactHeightsStillCutTheTail() {
+        val visible = visibleBlocks(WidgetPresets.classic.config, widgetLayoutMode(80f))
+        assertEquals(2, visible.size)
+        assertEquals(
+            listOf(WidgetBlockId.HEADER, WidgetBlockId.QUOTAS),
+            visible.map { it.id },
+        )
     }
 
     // ---- RefreshWorker timeout plumbing (client validation only) ----

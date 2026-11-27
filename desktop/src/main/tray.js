@@ -5,10 +5,19 @@ const path = require('path');
 const { APP_DIR, STATUS_PATH } = require('./paths');
 const { readAllState, readJson } = require('./storage');
 const zcodeAuth = require('./zcode-auth');
+const appearance = require('./appearance');
 
 const APP_ROOT = path.join(__dirname, '..', '..');
 const ASSETS_DIR = path.join(APP_ROOT, 'assets');
 const ZCODE_WEB_URL = 'https://zcode.z.ai/';
+
+/** Tray labels for the four window form factors. */
+const WINDOW_MODE_LABELS = Object.freeze({
+  full: 'Полный',
+  compact: 'Компактный',
+  minibar: 'Мини-бар',
+  pill: 'Пилюля',
+});
 
 let tray = null;
 
@@ -88,6 +97,15 @@ function isZCodeConnected() {
   return Boolean(zcode && zcode.method === 'api' && zcode.auth_ok !== false);
 }
 
+/** Persisted form factor; `full` when appearance.json is unreadable. */
+function currentPresetMode() {
+  try {
+    return appearance.loadAppearance().preset_mode;
+  } catch {
+    return 'full';
+  }
+}
+
 function syncSettingsWindow() {
   const api = windowApi();
   if (!api || typeof api.pushAppearance !== 'function') return;
@@ -153,6 +171,43 @@ function pickHandler(candidate, fallback) {
   return typeof candidate === 'function' ? candidate : fallback;
 }
 
+/** Radio submenu switching the widget between window form factors. */
+function windowModeSubmenu(presetMode, handlers) {
+  const active = appearance.normalizePresetMode(presetMode);
+  return {
+    label: 'Режим окна',
+    submenu: appearance.PRESET_MODES.map((id) => ({
+      label: WINDOW_MODE_LABELS[id],
+      type: 'radio',
+      checked: active === id,
+      click: () => pickHandler(handlers.setWindowMode, applyWindowMode)(id),
+    })),
+  };
+}
+
+/**
+ * Switch the window form factor from the tray without overwriting the user's
+ * theme, accent or block layout. The IPC module is loaded lazily, exactly like
+ * `syncSettingsWindow`, so plain Node tests can load this file.
+ */
+function applyWindowMode(presetMode) {
+  const mode = appearance.normalizePresetMode(presetMode);
+  appearance.saveAppearance({ preset_mode: mode });
+  const api = windowApi();
+  try {
+    const { buildSettingsSnapshot } = require('./ipc');
+    if (typeof buildSettingsSnapshot === 'function' && api) {
+      const snapshot = buildSettingsSnapshot();
+      if (typeof api.applyAppearanceToWindows === 'function') {
+        api.applyAppearanceToWindows(snapshot);
+      }
+    }
+  } catch {
+    // Plain Node tests load tray.js without Electron.
+  }
+  refreshMenu();
+}
+
 /**
  * Pure menu template shared by the tray and the popup menu. It never touches
  * the Electron API: state is passed in and clicks go through `handlers`, so
@@ -164,6 +219,7 @@ function buildMenuTemplate({
   alwaysOnTop = false,
   openAtLogin = false,
   zcodeConnected = false,
+  presetMode = 'full',
   handlers = {},
 } = {}) {
   const isWindowMenu = source === 'window';
@@ -211,6 +267,13 @@ function buildMenuTemplate({
     },
     { label: 'Настройки…', click: pickHandler(handlers.openSettings, openSettings) },
     { type: 'separator' },
+  );
+
+  // The window-mode submenu goes strictly after this separator: the existing
+  // test pins "Настройки…" immediately before it.
+  template.push(windowModeSubmenu(presetMode, handlers));
+
+  template.push(
     { label: 'Открыть папку конфига', click: pickHandler(handlers.openConfigDir, openConfigDir) },
     { label: 'Открыть Z.ai', click: pickHandler(handlers.openZCodeWeb, openZCodeWeb) },
   );
@@ -259,6 +322,7 @@ function buildMenu(options = {}) {
     alwaysOnTop,
     openAtLogin,
     zcodeConnected: isZCodeConnected(),
+    presetMode: currentPresetMode(),
     handlers: options.handlers || {},
   });
 
@@ -302,5 +366,6 @@ module.exports = {
   showContextMenu,
   refreshMenu,
   buildMenuTemplate,
+  applyWindowMode,
   loginItemOptions,
 };

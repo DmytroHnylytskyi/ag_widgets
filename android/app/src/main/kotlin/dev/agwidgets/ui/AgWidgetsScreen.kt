@@ -10,6 +10,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -45,6 +46,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.glance.appwidget.updateAll
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
 import dev.agwidgets.BuildConfig
 import dev.agwidgets.data.AgStatus
 import dev.agwidgets.data.NtfyClient
@@ -59,13 +63,20 @@ import dev.agwidgets.ui.components.ContextCard
 import dev.agwidgets.ui.components.DiagnosticsCard
 import dev.agwidgets.ui.components.Header
 import dev.agwidgets.ui.components.HeroCard
+import dev.agwidgets.ui.components.InstalledWidgetInfo
 import dev.agwidgets.ui.components.SurfaceCard
 import dev.agwidgets.ui.components.ZCodeDashboardCard
 import dev.agwidgets.ui.theme.AgDim
 import dev.agwidgets.ui.theme.AgTheme
 import dev.agwidgets.ui.theme.AgType
+import dev.agwidgets.ui.widget.WidgetConfigActivity
 import dev.agwidgets.widget.LimitsWidget
 import dev.agwidgets.widget.LimitsWidgetReceiver
+import dev.agwidgets.widget.WidgetConfig
+import dev.agwidgets.widget.WidgetConfigCodec
+import dev.agwidgets.widget.WidgetConfigStore
+import dev.agwidgets.widget.WidgetPresets
+import dev.agwidgets.widget.WidgetThemes
 import dev.agwidgets.work.RefreshWorker
 import dev.agwidgets.work.ResetAlertWorker
 import kotlinx.coroutines.CoroutineScope
@@ -190,6 +201,7 @@ internal fun AgWidgetsScreen(themeMode: String, onSelectTheme: (String) -> Unit)
     var mode by remember { mutableStateOf(StatusStore.getMode(context)) }
     var notificationsDenied by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var installedWidgets by remember { mutableStateOf<List<InstalledWidgetInfo>>(emptyList()) }
 
     val oauthState by OAuthSessionHolder.state.collectAsState()
     val isOAuthPending = oauthState is OAuthUiState.Waiting
@@ -394,6 +406,40 @@ internal fun AgWidgetsScreen(themeMode: String, onSelectTheme: (String) -> Unit)
         } else {
             statusMessage = "Лаунчер не поддерживает автодобавление — добавьте виджет вручную"
         }
+    }
+
+    /** Widgets currently on the launcher, with their stored preset and theme labels. */
+    fun loadWidgets() {
+        installedWidgets = runCatching {
+            val manager = AppWidgetManager.getInstance(context)
+            val component = ComponentName(context, LimitsWidgetReceiver::class.java)
+            manager.getAppWidgetIds(component)
+                .sorted()
+                .map { appWidgetId ->
+                    val config = WidgetConfigStore.get(context, appWidgetId)
+                    InstalledWidgetInfo(
+                        appWidgetId = appWidgetId,
+                        presetLabel = widgetPresetLabel(config),
+                        themeLabel = widgetThemeLabel(config.theme),
+                    )
+                }
+        }.getOrDefault(emptyList())
+    }
+
+    val launchConfig = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { loadWidgets() }
+
+    // Returning from the config Activity — or from the launcher's pin dialog —
+    // re-reads the list: the preset and theme labels must match what is stored.
+    val lifecycleOwner = LocalActivity.current as? LifecycleOwner
+    DisposableEffect(lifecycleOwner) {
+        loadWidgets()
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) loadWidgets()
+        }
+        lifecycleOwner?.lifecycle?.addObserver(observer)
+        onDispose { lifecycleOwner?.lifecycle?.removeObserver(observer) }
     }
 
     LaunchedEffect(Unit) {
@@ -603,7 +649,16 @@ internal fun AgWidgetsScreen(themeMode: String, onSelectTheme: (String) -> Unit)
                                 )
                             }
                             if (mode != StatusStore.MODE_ZCODE) {
-                                SurfaceCard(onPinWidget = { pinWidget() })
+                                SurfaceCard(
+                                    installedWidgets = installedWidgets,
+                                    onPinWidget = { pinWidget() },
+                                    onConfigureWidget = { appWidgetId ->
+                                        launchConfig.launch(
+                                            Intent(context, WidgetConfigActivity::class.java)
+                                                .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId),
+                                        )
+                                    },
+                                )
                             }
                             DiagnosticsCard(
                                 rawJson = lastStatus?.rawJson,
@@ -623,11 +678,19 @@ internal fun AgWidgetsScreen(themeMode: String, onSelectTheme: (String) -> Unit)
                         }
                     }
 
+                    val footerCopy = when {
+                        mode == StatusStore.MODE_ZCODE ->
+                            "Токен ZCode хранится только на телефоне"
+                        BuildConfig.ZCODE_ENABLED ->
+                            "В ntfy уходят числа квот, токенов, ID диалога и флаг ваучера"
+                        else ->
+                            "В ntfy уходят числа квот, токенов и ID диалога"
+                    }
                     Text(
                         text = if (colors.isClassic) {
-                            "AGW / 01 · В NTFY УХОДЯТ ЧИСЛА КВОТ, ТОКЕНОВ, ID ДИАЛОГА И ФЛАГ ВАУЧЕРА"
+                            "AGW / 01 · ${footerCopy.uppercase()}"
                         } else {
-                            "В ntfy уходят числа квот, токенов, ID диалога и флаг ваучера"
+                            footerCopy
                         },
                         style = if (colors.isClassic) {
                             AgType.caption.copy(fontFamily = FontFamily.Monospace, letterSpacing = 0.8.sp, fontSize = 9.sp)
@@ -640,4 +703,35 @@ internal fun AgWidgetsScreen(themeMode: String, onSelectTheme: (String) -> Unit)
             }
         }
     }
+}
+
+/**
+ * Human label for a stored config: the first preset with the same theme,
+ * radius, density and enabled blocks wins; a hand-tuned config reads "Свой".
+ */
+private fun widgetPresetLabel(config: WidgetConfig): String {
+    val normalized = WidgetConfigCodec.normalize(config)
+    val enabled = normalized.blocks.filter { it.enabled }.map { it.id }.toSet()
+    val preset = WidgetPresets.all
+        // A "Только ZCode" preset is not offered in the `context` flavour, so a
+        // stale full-build config must not be labelled with it either.
+        .filter { BuildConfig.ZCODE_ENABLED || it.id != WidgetPresets.zcodeOnly.id }
+        .firstOrNull { candidate ->
+            val target = WidgetConfigCodec.normalize(candidate.config)
+            target.theme == normalized.theme &&
+                target.cornerRadiusDp == normalized.cornerRadiusDp &&
+                target.density == normalized.density &&
+                target.blocks.filter { it.enabled }.map { it.id }.toSet() == enabled
+        }
+    return preset?.label ?: "Свой"
+}
+
+/** Human label for a [WidgetThemes] id; unknown ids fall back to the system theme. */
+private fun widgetThemeLabel(theme: String): String = when (WidgetThemes.normalize(theme)) {
+    WidgetThemes.GRAPHITE -> "Graphite"
+    WidgetThemes.PAPER -> "Paper"
+    WidgetThemes.OLED -> "OLED"
+    WidgetThemes.GLASS -> "Glass"
+    WidgetThemes.CLASSIC -> "Classic"
+    else -> "Авто"
 }

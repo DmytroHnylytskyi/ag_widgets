@@ -1,0 +1,308 @@
+{
+  "_comment": "Shared golden cases for the widget appearance contract (appearance_schema_v1). Desktop (desktop/src/main/appearance.js) and Android (WidgetConfigCodec) both replay this file so their normalisation can never drift.",
+  "accent_cases": [
+    { "input": "#60A5FA", "expected": "#60a5fa" },
+    { "input": "#000000", "expected": "#000000" },
+    { "input": "  #4EF2D2  ", "expected": "#4ef2d2" },
+    { "input": "#fff", "expected": null },
+    { "input": "fff", "expected": null },
+    { "input": "#60A5FA0", "expected": null },
+    { "input": "red", "expected": null },
+    { "input": "rgb(1,2,3)", "expected": null },
+    { "input": "url(x)", "expected": null },
+    { "input": "javascript:alert(1)", "expected": null },
+    { "input": "", "expected": null },
+    { "input": "   ", "expected": null },
+    { "input": null, "expected": null },
+    { "input": 123, "expected": null },
+    { "input": true, "expected": null }
+  ],
+  "clamp_cases": {
+    "font_scale": [
+      { "input": 0.5, "expected": 0.85 },
+      { "input": 2.0, "expected": 1.4 },
+      { "input": 1.07, "expected": 1.05 },
+      { "input": 1.38, "expected": 1.4 },
+      { "input": 1.0, "expected": 1.0 },
+      { "input": 0.85, "expected": 0.85 },
+      { "input": 1.425, "expected": 1.4 }
+    ],
+    "corner_radius": [
+      { "input": 0, "expected": 0 },
+      { "input": 5, "expected": 6 },
+      { "input": 12, "expected": 12 },
+      { "input": 13, "expected": 14 },
+      { "input": 23, "expected": 24 },
+      { "input": 29, "expected": 24 },
+      { "input": -3, "expected": 0 }
+    ],
+    "opacity_desktop": [
+      { "input": 0.2, "expected": 0.6 },
+      { "input": 1.2, "expected": 1.0 },
+      { "input": 0.83, "expected": 0.85 },
+      { "input": 0.97, "expected": 0.95 },
+      { "input": 0.6, "expected": 0.6 }
+    ],
+    "opacity_android": [
+      { "input": -0.2, "expected": 0.0 },
+      { "input": 0.12, "expected": 0.1 },
+      { "input": 0.94, "expected": 0.95 },
+      { "input": 0.97, "expected": 0.95 },
+      { "input": 0.98, "expected": 1.0 },
+      { "input": 1.5, "expected": 1.0 }
+    ],
+    "density": [
+      { "input": "compact", "expected": "compact" },
+      { "input": " COMPACT ", "expected": "compact" },
+      { "input": "Comfortable", "expected": "comfortable" },
+      { "input": "spacious", "expected": "spacious" },
+      { "input": "", "expected": "comfortable" },
+      { "input": "huge", "expected": "comfortable" },
+      { "input": null, "expected": "comfortable" },
+      { "input": 42, "expected": "comfortable" }
+    ],
+    "preset_mode": [
+      { "input": "full", "expected": "full" },
+      { "input": " PILL ", "expected": "pill" },
+      { "input": "minibar", "expected": "minibar" },
+      { "input": "Compact", "expected": "compact" },
+      { "input": "WIDE", "expected": "full" },
+      { "input": "", "expected": "full" },
+      { "input": null, "expected": "full" },
+      { "input": 3, "expected": "full" }
+    ]
+  },
+  "blocks_cases": [
+    {
+      "name": "null_input_uses_defaults",
+      "input": null,
+      "desktop": [
+        {
+          "id": "context_hero",
+          "enabled": true,
+          "options": { "show_recent": true, "recent_count": 3, "show_thresholds": true }
+        },
+        {
+          "id": "quotas_grid",
+          "enabled": true,
+          "options": { "show_gemini": true, "show_3p": true, "show_countdown": true }
+        },
+        { "id": "zcode_card", "enabled": true, "options": { "show_balance_bar": true } }
+      ],
+      "android": [
+        { "id": "header", "enabled": true, "options": {} },
+        { "id": "context", "enabled": true, "options": { "show_compact_chip": true } },
+        {
+          "id": "quotas",
+          "enabled": true,
+          "options": { "show_gemini": true, "show_3p": true, "show_countdown": true }
+        },
+        { "id": "zcode", "enabled": true, "options": { "show_balance_bar": true } }
+      ]
+    },
+    {
+      "name": "not_an_array_uses_defaults",
+      "input": "nope",
+      "desktop": [
+        {
+          "id": "context_hero",
+          "enabled": true,
+          "options": { "show_recent": true, "recent_count": 3, "show_thresholds": true }
+        },
+        {
+          "id": "quotas_grid",
+          "enabled": true,
+          "options": { "show_gemini": true, "show_3p": true, "show_countdown": true }
+        },
+        { "id": "zcode_card", "enabled": true, "options": { "show_balance_bar": true } }
+      ],
+      "android": [
+        { "id": "header", "enabled": true, "options": {} },
+        { "id": "context", "enabled": true, "options": { "show_compact_chip": true } },
+        {
+          "id": "quotas",
+          "enabled": true,
+          "options": { "show_gemini": true, "show_3p": true, "show_countdown": true }
+        },
+        { "id": "zcode", "enabled": true, "options": { "show_balance_bar": true } }
+      ]
+    },
+    {
+      "name": "reorder_keeps_user_order_and_appends_missing",
+      "input": [{ "id": "zcode", "enabled": false }, { "id": "context", "enabled": true }],
+      "desktop": [
+        { "id": "zcode_card", "enabled": false, "options": { "show_balance_bar": true } },
+        {
+          "id": "context_hero",
+          "enabled": true,
+          "options": { "show_recent": true, "recent_count": 3, "show_thresholds": true }
+        },
+        {
+          "id": "quotas_grid",
+          "enabled": true,
+          "options": { "show_gemini": true, "show_3p": true, "show_countdown": true }
+        }
+      ],
+      "android": [
+        { "id": "zcode", "enabled": false, "options": { "show_balance_bar": true } },
+        { "id": "context", "enabled": true, "options": { "show_compact_chip": true } },
+        { "id": "header", "enabled": true, "options": {} },
+        {
+          "id": "quotas",
+          "enabled": true,
+          "options": { "show_gemini": true, "show_3p": true, "show_countdown": true }
+        }
+      ]
+    },
+    {
+      "name": "duplicates_dropped_after_first_occurrence",
+      "input": [
+        { "id": "context", "enabled": false },
+        { "id": "zcode" },
+        { "id": "context", "enabled": true }
+      ],
+      "desktop": [
+        {
+          "id": "context_hero",
+          "enabled": false,
+          "options": { "show_recent": true, "recent_count": 3, "show_thresholds": true }
+        },
+        { "id": "zcode_card", "enabled": true, "options": { "show_balance_bar": true } },
+        {
+          "id": "quotas_grid",
+          "enabled": true,
+          "options": { "show_gemini": true, "show_3p": true, "show_countdown": true }
+        }
+      ],
+      "android": [
+        { "id": "context", "enabled": false, "options": { "show_compact_chip": true } },
+        { "id": "zcode", "enabled": true, "options": { "show_balance_bar": true } },
+        { "id": "header", "enabled": true, "options": {} },
+        {
+          "id": "quotas",
+          "enabled": true,
+          "options": { "show_gemini": true, "show_3p": true, "show_countdown": true }
+        }
+      ]
+    },
+    {
+      "name": "unknown_and_malformed_entries_ignored",
+      "input": [
+        { "id": "banner" },
+        { "id": 42 },
+        null,
+        "context",
+        [],
+        { "id": "quotas", "enabled": false }
+      ],
+      "desktop": [
+        {
+          "id": "quotas_grid",
+          "enabled": false,
+          "options": { "show_gemini": true, "show_3p": true, "show_countdown": true }
+        },
+        {
+          "id": "context_hero",
+          "enabled": true,
+          "options": { "show_recent": true, "recent_count": 3, "show_thresholds": true }
+        },
+        { "id": "zcode_card", "enabled": true, "options": { "show_balance_bar": true } }
+      ],
+      "android": [
+        {
+          "id": "quotas",
+          "enabled": false,
+          "options": { "show_gemini": true, "show_3p": true, "show_countdown": true }
+        },
+        { "id": "header", "enabled": true, "options": {} },
+        { "id": "context", "enabled": true, "options": { "show_compact_chip": true } },
+        { "id": "zcode", "enabled": true, "options": { "show_balance_bar": true } }
+      ]
+    },
+    {
+      "name": "invalid_options_fall_back_to_defaults",
+      "input": [
+        {
+          "id": "context",
+          "enabled": "yes",
+          "options": { "show_recent": "true", "recent_count": 9, "show_thresholds": false }
+        },
+        {
+          "id": "quotas",
+          "options": { "show_gemini": false, "show_3p": null, "show_countdown": "no" }
+        }
+      ],
+      "desktop": [
+        {
+          "id": "context_hero",
+          "enabled": true,
+          "options": { "show_recent": true, "recent_count": 5, "show_thresholds": false }
+        },
+        {
+          "id": "quotas_grid",
+          "enabled": true,
+          "options": { "show_gemini": false, "show_3p": true, "show_countdown": true }
+        },
+        { "id": "zcode_card", "enabled": true, "options": { "show_balance_bar": true } }
+      ],
+      "android": [
+        { "id": "context", "enabled": true, "options": { "show_compact_chip": true } },
+        {
+          "id": "quotas",
+          "enabled": true,
+          "options": { "show_gemini": false, "show_3p": true, "show_countdown": true }
+        },
+        { "id": "header", "enabled": true, "options": {} },
+        { "id": "zcode", "enabled": true, "options": { "show_balance_bar": true } }
+      ]
+    },
+    {
+      "name": "recent_count_is_clamped_to_zero",
+      "input": [{ "id": "context", "options": { "recent_count": -4 } }],
+      "desktop": [
+        {
+          "id": "context_hero",
+          "enabled": true,
+          "options": { "show_recent": true, "recent_count": 0, "show_thresholds": true }
+        },
+        {
+          "id": "quotas_grid",
+          "enabled": true,
+          "options": { "show_gemini": true, "show_3p": true, "show_countdown": true }
+        },
+        { "id": "zcode_card", "enabled": true, "options": { "show_balance_bar": true } }
+      ],
+      "android": [
+        { "id": "context", "enabled": true, "options": { "show_compact_chip": true } },
+        { "id": "header", "enabled": true, "options": {} },
+        {
+          "id": "quotas",
+          "enabled": true,
+          "options": { "show_gemini": true, "show_3p": true, "show_countdown": true }
+        },
+        { "id": "zcode", "enabled": true, "options": { "show_balance_bar": true } }
+      ]
+    }
+  ],
+  "import_success_cases": [
+    { "name": "theme_only", "input": "{\"theme\":\"oled\"}", "expected_theme": "oled" },
+    {
+      "name": "accent_and_radius",
+      "input": "{\"custom_accent\":\"#34D399\",\"corner_radius\":5,\"density\":\"SPACIOUS\"}",
+      "expected_theme": "system",
+      "expected_accent": "#34d399",
+      "expected_corner_radius": 6,
+      "expected_density": "spacious"
+    }
+  ],
+  "import_error_cases": [
+    { "name": "broken_json", "input": "{\"theme\":", "ok": false, "error_code": "invalid" },
+    { "name": "empty_string", "input": "", "ok": false, "error_code": "invalid" },
+    { "name": "array_root", "input": "[]", "ok": false, "error_code": "invalid" },
+    { "name": "number_root", "input": "42", "ok": false, "error_code": "invalid" },
+    { "name": "string_root", "input": "\"x\"", "ok": false, "error_code": "invalid" },
+    { "name": "null_root", "input": "null", "ok": false, "error_code": "invalid" },
+    { "name": "too_large", "pad_chars": 17000, "ok": false, "error_code": "too_large" }
+  ],
+  "import_max_bytes": 16384
+}

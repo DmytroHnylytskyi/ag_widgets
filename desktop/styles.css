@@ -441,6 +441,13 @@ html, body {
   display: none;
 }
 
+/* Windows Chromium still paints the legacy ▲/▼ stepper buttons on a styled
+   scrollbar; every rail in the widget drops them explicitly (D-08). */
+::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
 
 /* ── Title bar ─────────────────────────────────────────── */
 
@@ -838,7 +845,7 @@ html[data-dark="false"] .icon-sun,
   text-overflow: ellipsis;
 }
 
-.status-badge {
+.status-pill {
   font-family: var(--font-mono);
   font-size: 7px;
   font-weight: 600;
@@ -864,14 +871,14 @@ html[data-dark="false"] .icon-sun,
 .level-red {
   color: var(--risk);
   border-color: color-mix(in srgb, var(--risk) 58%, transparent);
-  animation: badge-pulse 2.6s ease-out infinite;
+  animation: pill-pulse 2.6s ease-out infinite;
 }
 
 .level-idle {
   color: var(--text-muted);
 }
 
-@keyframes badge-pulse {
+@keyframes pill-pulse {
   0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--risk) 0%, transparent); }
   50% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--risk) 14%, transparent); }
 }
@@ -1622,7 +1629,7 @@ html[data-dark="false"] .icon-sun,
   margin-right: 4px;
 }
 
-:root:not([data-theme^="classic"]) .status-badge,
+:root:not([data-theme^="classic"]) .status-pill,
 :root:not([data-theme^="classic"]) .zcode-chip,
 :root:not([data-theme^="classic"]) .tier-badge {
   display: inline-flex;
@@ -1641,20 +1648,20 @@ html[data-dark="false"] .icon-sun,
   color: var(--text);
 }
 
-:root:not([data-theme^="classic"]) .status-badge::before,
+:root:not([data-theme^="classic"]) .status-pill::before,
 :root:not([data-theme^="classic"]) .zcode-chip::before {
   content: "";
   width: 6px;
   height: 6px;
   border-radius: 50%;
   flex-shrink: 0;
-  background: var(--badge-tone, var(--text-muted));
+  background: var(--pill-tone, var(--text-muted));
 }
 
-:root:not([data-theme^="classic"]) .level-green { --badge-tone: var(--ok); color: var(--text); }
-:root:not([data-theme^="classic"]) .level-yellow { --badge-tone: var(--warn); color: var(--text); }
-:root:not([data-theme^="classic"]) .level-red { --badge-tone: var(--risk); color: var(--text); }
-:root:not([data-theme^="classic"]) .level-idle { --badge-tone: var(--text-muted); color: var(--text-secondary); }
+:root:not([data-theme^="classic"]) .level-green { --pill-tone: var(--ok); color: var(--text); }
+:root:not([data-theme^="classic"]) .level-yellow { --pill-tone: var(--warn); color: var(--text); }
+:root:not([data-theme^="classic"]) .level-red { --pill-tone: var(--risk); color: var(--text); }
+:root:not([data-theme^="classic"]) .level-idle { --pill-tone: var(--text-muted); color: var(--text-secondary); }
 
 :root:not([data-theme^="classic"]) .level-red,
 :root:not([data-theme^="classic"]) .chip-available,
@@ -1666,11 +1673,11 @@ html[data-dark="false"] .icon-sun,
   box-shadow: none;
 }
 
-:root:not([data-theme^="classic"]) .chip-available { --badge-tone: var(--ok); color: var(--text); }
-:root:not([data-theme^="classic"]) .chip-none { --badge-tone: var(--text-muted); color: var(--text-secondary); }
-:root:not([data-theme^="classic"]) .chip-warn { --badge-tone: var(--warn); color: var(--text); }
-:root:not([data-theme^="classic"]) .chip-error { --badge-tone: var(--risk); color: var(--text); }
-:root:not([data-theme^="classic"]) .chip-idle { --badge-tone: var(--text-muted); color: var(--text-secondary); }
+:root:not([data-theme^="classic"]) .chip-available { --pill-tone: var(--ok); color: var(--text); }
+:root:not([data-theme^="classic"]) .chip-none { --pill-tone: var(--text-muted); color: var(--text-secondary); }
+:root:not([data-theme^="classic"]) .chip-warn { --pill-tone: var(--warn); color: var(--text); }
+:root:not([data-theme^="classic"]) .chip-error { --pill-tone: var(--risk); color: var(--text); }
+:root:not([data-theme^="classic"]) .chip-idle { --pill-tone: var(--text-muted); color: var(--text-secondary); }
 
 :root:not([data-theme^="classic"]) .tier-badge {
   color: var(--accent-ink);
@@ -1929,7 +1936,7 @@ html[data-dark="false"] .icon-sun,
 :root:not([data-theme^="classic"]) .ctx-alert,
 :root:not([data-theme^="classic"]) .zcode-action,
 :root:not([data-theme^="classic"]) .zcode-chip,
-:root:not([data-theme^="classic"]) .status-badge,
+:root:not([data-theme^="classic"]) .status-pill,
 :root:not([data-theme^="classic"]) .tier-badge {
   border-radius: clamp(0px, calc(var(--card-radius) - 4px), 8px);
 }
@@ -1954,28 +1961,449 @@ html[data-dark="false"] .icon-sun,
   border-radius: 6px;
 }
 
+/* ── Widget builder: accent, radius, density, form factors ──
+   The renderer writes --card-radius, --custom-accent and the
+   data-density / data-mode attributes on <html>. Classic keeps its
+   author decoration in `full` (the rules above win for its radius). */
 
-/* Modern rail: the card edges share the header/footer gutter. Ownership of
-   the 6px scrollbar gutter is dropped so the cards never slide 6px past the
-   title bar (S1-005); the bar itself stays hidden by the base rule. */
-:root:not([data-theme^="classic"]) .cards-stack {
-  padding: 0;
-  margin: 0;
-  scrollbar-width: none;
-}
-
-/* A custom accent set by the renderer re-points the theme accent. */
+/* A custom accent set by the renderer re-points the theme accent. The
+   renderer also inlines --accent/--glow/--glow-rgb/--accent-ink so the
+   rgb-triple surfaces pick the new colour up. */
 html[data-custom-accent="true"] {
   --accent: var(--custom-accent);
   --glow: var(--custom-accent);
 }
 
+/* Compact strip: a one-line summary shown in the minibar/pill modes. */
+.compact-strip {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px;
+  height: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--card-border);
+  border-radius: var(--card-radius);
+  background: var(--card);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  cursor: grab;
+  touch-action: none;
+}
+
+.compact-strip:active {
+  cursor: grabbing;
+}
+
+.compact-strip.hidden {
+  display: none !important;
+}
+
+.strip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--text-muted);
+}
+
+#compact-strip[data-ctx-level="green"] .strip-dot {
+  background: var(--ok);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--ok) 70%, transparent);
+}
+
+#compact-strip[data-ctx-level="yellow"] .strip-dot {
+  background: var(--warn);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--warn) 70%, transparent);
+}
+
+#compact-strip[data-ctx-level="red"] .strip-dot {
+  background: var(--risk);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--risk) 70%, transparent);
+}
+
+#compact-strip[data-ctx-level="unknown"] .strip-dot {
+  background: var(--text-muted);
+  box-shadow: none;
+}
+
+.strip-text {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.strip-quota,
+.strip-zcode {
+  color: var(--text-muted);
+}
+
+.strip-btn {
+  flex-shrink: 0;
+}
+
+/* Density: only rhythm and padding, never decoration. */
+html[data-density="compact"] .cards-stack {
+  gap: 8px;
+}
+
+html[data-density="compact"] .card {
+  padding: 9px 11px 10px;
+}
+
+html[data-density="spacious"] .cards-stack {
+  gap: 15px;
+}
+
+html[data-density="spacious"] .card {
+  padding: 15px 16px 16px;
+}
+
+/* Modern density: strict 4px rhythm (contract §2.1). */
+:root:not([data-theme^="classic"]) .cards-stack {
+  gap: var(--space-3);
+}
+
+html:not([data-theme^="classic"])[data-density="compact"] .cards-stack {
+  gap: var(--space-2);
+}
+
+html:not([data-theme^="classic"])[data-density="compact"] .card {
+  padding: var(--space-2) var(--space-3);
+}
+
+html:not([data-theme^="classic"])[data-density="spacious"] .cards-stack {
+  gap: var(--space-4);
+}
+
+html:not([data-theme^="classic"])[data-density="spacious"] .card {
+  padding: var(--space-4) var(--space-5);
+}
+
+/* Full: scrollable card rail with a thin, quiet scrollbar.
+   Use `scrollbar-width: auto` (without `scrollbar-color`) so Chromium keeps
+   `::-webkit-scrollbar*` and `::-webkit-scrollbar-button { display: none }`
+   active instead of drawing native Windows ▲/▼ steppers (D-08). */
+html[data-mode="full"] #widget-cards {
+  overflow-y: auto;
+  scrollbar-width: auto;
+}
+
+html[data-mode="full"] #widget-cards::-webkit-scrollbar {
+  display: block;
+  width: 4px;
+}
+
+html[data-mode="full"] #widget-cards::-webkit-scrollbar-thumb {
+  background: var(--card-border);
+  border-radius: 999px;
+}
+
+html[data-mode="full"] #widget-cards::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Modern rail: the 6px scrollbar sits inside the page gutter so the cards,
+   the header and the footer share one right edge (S1-005). */
+html:not([data-theme^="classic"]) .cards-stack {
+  padding: 0;
+  margin: 0;
+  /* `auto` keeps the ::-webkit-scrollbar rules in charge (a standard
+     `scrollbar-width` value would hide the thin thumb entirely). */
+  scrollbar-width: auto;
+}
+
+html:not([data-theme^="classic"])[data-mode="full"] #widget-cards::-webkit-scrollbar,
+html:not([data-theme^="classic"])[data-mode="compact"] #widget-cards::-webkit-scrollbar {
+  display: block;
+  width: 6px;
+}
+
+html:not([data-theme^="classic"])[data-mode="compact"] #widget-cards {
+  overflow-y: auto;
+  padding: 0;
+  margin: 0;
+}
+
+html:not([data-theme^="classic"]) #widget-cards::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text-muted) 55%, transparent);
+  border-radius: var(--r-bar);
+}
+
+html:not([data-theme^="classic"]) #widget-cards::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+html:not([data-theme^="classic"]) #widget-cards[data-scrollable="true"]:not([data-scroll-end="true"]) {
+  mask-image: linear-gradient(180deg, #000 calc(100% - 20px), transparent 100%);
+}
+
+html:not([data-theme^="classic"]) #widget-cards[data-fits="true"] {
+  /* Content shorter than the rail starts right under the header instead of
+     floating in a 110px void (S1-054, D-11). */
+  justify-content: flex-start;
+}
+
+/* Compact: a dense card, secondary chrome hidden, no oversized gauge. */
+html[data-mode="compact"] .widget-shell {
+  padding: 10px 12px 12px;
+  gap: 8px;
+}
+
+html[data-mode="compact"] .widget-footer,
+html[data-mode="compact"] .card-heading,
+html[data-mode="compact"] .serial,
+html[data-mode="compact"] .meta-snippet,
+html[data-mode="compact"] #ctx-workspace {
+  display: none;
+}
+
+html[data-mode="compact"] #widget-cards {
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+}
+
+html[data-mode="compact"] .card {
+  padding: 8px 10px 9px;
+  min-height: 0;
+}
+
+html[data-mode="compact"] .orbital-gauge,
+html[data-mode="compact"] .gauge-svg {
+  width: 96px;
+  height: 96px;
+  max-width: 96px;
+}
+
+/* Compact modern: the first card must fit whole, chips/alerts do not. */
+html:not([data-theme^="classic"])[data-mode="compact"] .widget-shell {
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  gap: var(--space-2);
+}
+
+html:not([data-theme^="classic"])[data-mode="compact"] .titlebar {
+  height: var(--control-sm);
+}
+
+html:not([data-theme^="classic"])[data-mode="compact"] .card {
+  padding: var(--space-2) var(--space-3);
+}
+
+html:not([data-theme^="classic"])[data-mode="compact"] .context-main {
+  gap: var(--space-3);
+}
+
+html:not([data-theme^="classic"])[data-mode="compact"] .orbital-gauge,
+html:not([data-theme^="classic"])[data-mode="compact"] .gauge-svg {
+  width: 92px;
+  height: 92px;
+  max-width: 92px;
+}
+
+html:not([data-theme^="classic"])[data-mode="compact"] #ctx-recent,
+html:not([data-theme^="classic"])[data-mode="compact"] .zone-zones,
+html:not([data-theme^="classic"])[data-mode="compact"] .material {
+  display: none;
+}
+
+html:not([data-theme^="classic"])[data-mode="compact"] .card-heading {
+  display: inline-block;
+}
+
+html:not([data-theme^="classic"])[data-mode="compact"] .card-topline {
+  padding-bottom: var(--space-1);
+  margin-bottom: var(--space-1);
+}
+
+html:not([data-theme^="classic"])[data-mode="compact"] .tokens-big {
+  /* 92px ring => ~62px inner diameter (D-05). */
+  font-size: clamp(16px, calc(18px * var(--font-scale)), 20px);
+}
+
+html:not([data-theme^="classic"])[data-mode="compact"] .tokens-sub {
+  font-size: clamp(11px, calc(11px * var(--font-scale)), 12px);
+  max-width: 72px;
+}
+
+html:not([data-theme^="classic"])[data-mode="compact"] .zone {
+  margin-top: var(--space-1);
+}
+
+/* 280x190 leaves ~130px for the rail: drop the zone and shrink the ring. */
+@media (max-height: 240px) {
+  html:not([data-theme^="classic"])[data-mode="compact"] .orbital-gauge,
+  html:not([data-theme^="classic"])[data-mode="compact"] .gauge-svg {
+    width: 64px;
+    height: 64px;
+    max-width: 64px;
+  }
+
+  html:not([data-theme^="classic"])[data-mode="compact"] .zone {
+    display: none;
+  }
+
+  html:not([data-theme^="classic"])[data-mode="compact"] .tokens-sub {
+    display: none;
+  }
+
+  html:not([data-theme^="classic"])[data-mode="compact"] .tokens-big {
+    font-size: 14px;
+  }
+
+  html:not([data-theme^="classic"])[data-mode="compact"] .ring-track {
+    stroke-width: 4;
+  }
+
+  html:not([data-theme^="classic"])[data-mode="compact"] .ring-fill {
+    stroke-width: 4.5;
+  }
+}
+
+/* Minibar: just the strip, pinned to the window edges. The modern shell reset
+   above is `(0, 3, 0)`, so the strip modes spell out the same specificity or
+   their 28px padding squeezes the strip to 10-20px (D-02). */
+html[data-mode="minibar"] .widget-shell,
+html[data-mode="pill"] .widget-shell,
+:root:not([data-theme^="classic"])[data-mode="minibar"] .widget-shell,
+:root:not([data-theme^="classic"])[data-mode="pill"] .widget-shell {
+  padding: 0;
+  gap: 0;
+}
+
+html[data-mode="minibar"] .titlebar,
+html[data-mode="minibar"] #widget-cards,
+html[data-mode="minibar"] .widget-footer {
+  display: none;
+}
+
+html[data-mode="minibar"] #compact-strip {
+  display: flex;
+  height: 100%;
+  flex-wrap: nowrap;
+  align-items: center;
+  overflow: hidden;
+  padding: 0 10px;
+  gap: 10px;
+}
+
+html[data-mode="minibar"] .strip-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+html[data-mode="minibar"] #strip-refresh-btn {
+  margin-left: auto;
+}
+
+/* Pill: context only, the settings button stays visible (no dead 43px zone). */
+html[data-mode="pill"] .titlebar,
+html[data-mode="pill"] #widget-cards,
+html[data-mode="pill"] .widget-footer {
+  display: none;
+}
+
+html[data-mode="pill"] #compact-strip {
+  display: flex;
+  height: 100%;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 0 10px;
+  gap: 10px;
+}
+
+html[data-mode="pill"] #strip-quota,
+html[data-mode="pill"] #strip-zcode {
+  display: none;
+}
+
+html[data-mode="pill"] .strip-text {
+  white-space: nowrap;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Strip modes: semantic groups never shrink mid-number (S1-026). */
+html[data-mode="minibar"] .strip-text,
+html[data-mode="pill"] .strip-text {
+  flex: 1 1 auto;
+}
+
+html[data-mode="minibar"] #strip-quota,
+html[data-mode="minibar"] #strip-zcode,
+html[data-mode="pill"] #strip-ctx {
+  flex: 0 0 auto;
+}
+
+html[data-mode="minibar"] .strip-dot,
+html[data-mode="pill"] .strip-dot {
+  flex: 0 0 auto;
+}
+
+html[data-mode="minibar"] .strip-btn,
+html[data-mode="pill"] .strip-btn {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 440px) {
+  html[data-mode="minibar"] #strip-zcode {
+    display: none;
+  }
+}
+
+@media (max-width: 340px) {
+  html[data-mode="minibar"] #strip-quota {
+    display: none;
+  }
+}
+
+/* Modern strip: readable scale + SVG buttons, no glow, no clip. */
+html:not([data-theme^="classic"])[data-mode="minibar"] #compact-strip,
+html:not([data-theme^="classic"])[data-mode="pill"] #compact-strip {
+  gap: var(--space-3);
+  padding: 0 var(--space-3);
+}
+
+html:not([data-theme^="classic"]) #strip-ctx {
+  color: var(--text);
+  font-weight: 600;
+}
+
+html:not([data-theme^="classic"]) .icon-btn.strip-btn .icon-svg {
+  width: 18px;
+  height: 18px;
+}
+
+html:not([data-theme^="classic"]) .strip-text {
+  font-family: var(--font-body);
+  font-size: max(11px, calc(12px * var(--font-scale)));
+  letter-spacing: 0;
+}
+
+html:not([data-theme^="classic"]) .strip-dot {
+  box-shadow: none !important;
+}
+
+html:not([data-theme^="classic"]) .icon-btn.strip-btn {
+  width: var(--control-sm);
+  height: var(--control-sm);
+}
+
 @media (max-width: 360px) {
-  :root:not([data-theme^="classic"]) #min-btn,
-  :root:not([data-theme^="classic"]) #quit-btn,
+  html:not([data-theme^="classic"]) #min-btn,
+  html:not([data-theme^="classic"]) #quit-btn,
   /* The chat title repeats the snippet context and squeezed the heading
      to "Конт…" at 320px. */
-  :root:not([data-theme^="classic"]) .material {
+  html:not([data-theme^="classic"]) .material {
     display: none;
   }
 }
