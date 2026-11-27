@@ -1,6 +1,8 @@
 package dev.agwidgets.data
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -101,6 +103,7 @@ object ZCodeClient {
         deviceMid: String,
         seq: Int = 0,
         previous: ZCodeStatus? = null,
+        timeoutMs: Int = 15_000,
     ): Result<ZCodeStatus> = withContext(Dispatchers.IO) {
         if (token.isBlank()) {
             return@withContext Result.failure(IllegalArgumentException("Токен ZCode не задан"))
@@ -113,13 +116,21 @@ object ZCodeClient {
             "X-ZCode-App-Version" to APP_VERSION
         )
         val safeSeq = seq.coerceAtLeast(0)
-        // A transport failure on one endpoint must not hide the other response.
-        val touchResponse = runCatching {
-            getJson("$ORIGIN/api/v1/marketing/touch?seq=$safeSeq", headers)
-        }.getOrNull()
-        val balanceResponse = runCatching {
-            getJson("$ORIGIN/api/v1/zcode-plan/billing/balance", headers)
-        }.getOrNull()
+        // The endpoints are independent, so probe them concurrently; a transport
+        // failure on one must not hide the other response or delay it.
+        val (touchResponse, balanceResponse) = coroutineScope {
+            val touch = async {
+                runCatching {
+                    getJson("$ORIGIN/api/v1/marketing/touch?seq=$safeSeq", headers, timeoutMs)
+                }.getOrNull()
+            }
+            val balance = async {
+                runCatching {
+                    getJson("$ORIGIN/api/v1/zcode-plan/billing/balance", headers, timeoutMs)
+                }.getOrNull()
+            }
+            touch.await() to balance.await()
+        }
 
         val touchCode = touchResponse?.first ?: 0
         val touchBody = touchResponse?.second
@@ -215,14 +226,18 @@ object ZCodeClient {
         return bytes.joinToString("") { "%02x".format(it) }
     }
 
-    private fun getJson(url: String, headers: Map<String, String>): Pair<Int, JSONObject?> {
+    private fun getJson(
+        url: String,
+        headers: Map<String, String>,
+        timeoutMs: Int = 15_000,
+    ): Pair<Int, JSONObject?> {
         var conn: HttpURLConnection? = null
         return try {
             conn = (URL(url).openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
                 instanceFollowRedirects = false
-                connectTimeout = 15000
-                readTimeout = 15000
+                connectTimeout = timeoutMs
+                readTimeout = timeoutMs
                 setRequestProperty("Accept", "application/json")
                 headers.forEach { (k, v) -> setRequestProperty(k, v) }
             }

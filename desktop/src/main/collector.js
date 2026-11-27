@@ -1,6 +1,7 @@
 'use strict';
 
 const fs = require('fs');
+const path = require('path');
 const { spawn } = require('child_process');
 const {
   COLLECTOR_PATH,
@@ -32,9 +33,63 @@ function appendTail(current, chunk, limit) {
 /** Interpreters to try, in order; empty and non-string config values are skipped. */
 function resolvePythonCandidates() {
   const config = readJson(CONFIG_PATH) || {};
-  return [config.python_path, process.env.PYTHON, 'python', 'py'].filter(
+  const candidates = [config.python_path, process.env.PYTHON, 'python', 'py'].filter(
     (candidate) => typeof candidate === 'string' && candidate.trim().length > 0,
   );
+  return preferWindowlessPython(candidates);
+}
+
+const WINDOWS_PYTHON_EXE = /python\.exe$/i;
+
+/**
+ * On Windows a console Python briefly flashes a console window for every
+ * helper run. `pythonw.exe` starts without one, so prefer it when it exists
+ * next to the configured interpreter while keeping `python.exe` as a fallback.
+ * Pure and injectable so it can be unit-tested off-Windows.
+ */
+function preferWindowlessPython(
+  candidates,
+  { platform = process.platform, existsSync = fs.existsSync } = {},
+) {
+  const list = Array.isArray(candidates) ? candidates : [];
+  if (platform !== 'win32') return list.slice();
+
+  const result = [];
+  const seen = new Set();
+  const push = (value) => {
+    if (seen.has(value)) return;
+    seen.add(value);
+    result.push(value);
+  };
+
+  for (const candidate of list) {
+    // Non-string config values are skipped rather than crashing the helper.
+    if (typeof candidate !== 'string') continue;
+
+    if (WINDOWS_PYTHON_EXE.test(candidate)) {
+      let sibling = null;
+      try {
+        // Use path.win32 so Windows paths resolve identically when tested on Linux CI.
+        sibling = path.win32.join(path.win32.dirname(candidate), 'pythonw.exe');
+        if (sibling === candidate || !existsSync(sibling)) sibling = null;
+      } catch {
+        sibling = null;
+      }
+      if (sibling) push(sibling);
+      push(candidate);
+      continue;
+    }
+
+    if (candidate.toLowerCase() === 'python') {
+      push('pythonw');
+      push(candidate);
+      continue;
+    }
+
+    push(candidate);
+  }
+
+  return result;
 }
 
 /** Parse a whole JSON object; used for the multi-line output of zcode_auth.py. */
@@ -132,7 +187,12 @@ function runPythonHelper(scriptPath, args, { input = null, timeoutMs, missingErr
       const python = candidates[index++];
       let child;
       try {
-        child = spawn(python, [scriptPath, ...args], { cwd: ROOT_DIR, windowsHide: true });
+        child = spawn(python, [scriptPath, ...args], {
+          cwd: ROOT_DIR,
+          windowsHide: true,
+          shell: false,
+          stdio: ['pipe', 'pipe', 'pipe'],
+        });
       } catch {
         // A malformed interpreter path is not fatal: try the next candidate.
         tryNext();
@@ -388,6 +448,7 @@ module.exports = {
   isRunning: () => running,
   buildCollectorArgs,
   parseCollectorOutput,
+  preferWindowlessPython,
   saveZCodeTokenViaPython,
   clearZCodeTokenViaPython,
 };

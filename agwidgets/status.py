@@ -14,7 +14,9 @@ from . import antigravity, context, crypto, ntfy, paths, zcode
 
 MIN_PUBLISH_INTERVAL_SEC = 600  # 10 minutes
 HEARTBEAT_INTERVAL_SEC = 3600  # 60 minutes
-MIN_ACTIVE_SWITCH_INTERVAL_SEC = 60  # Debounce tab-switch thrashing.
+# Debounce tab-switch thrashing; mirrors ACTIVE_PUBLISH_THROTTLE_MS = 15_000
+# in desktop/src/main/collector.js so an active chat switch reaches the phone in ~15-20 s.
+MIN_ACTIVE_SWITCH_INTERVAL_SEC = 15
 
 
 def _as_dict(value: Any) -> dict[str, Any]:

@@ -477,25 +477,52 @@ print(f"[OK] Python path saved in {config_path}")
 # 4. Electron dependencies.
 $DesktopDir = Join-Path $Root "desktop"
 $ElectronDir = Join-Path $DesktopDir "node_modules\electron"
+$ElectronExe = Join-Path $DesktopDir "node_modules\electron\dist\electron.exe"
+$ElectronInstallScript = Join-Path $DesktopDir "node_modules\electron\install.js"
 $LockPath = Join-Path $DesktopDir "package-lock.json"
-if (Test-Path -LiteralPath $ElectronDir) {
-    Write-Host "[OK] Electron dependencies already installed"
-} elseif (-not (Test-Path -LiteralPath $LockPath)) {
-    if ($DryRun) {
-        Write-Warning "desktop\package-lock.json is missing; npm ci cannot run."
-    } else {
-        throw "desktop\package-lock.json is missing, so 'npm ci' cannot run. Restore the lock file and retry."
-    }
-} elseif ($DryRun) {
-    Write-DryRun "Would run: npm ci (in $DesktopDir)"
+if ((Test-Path -LiteralPath $ElectronDir) -and (Test-Path -LiteralPath $ElectronExe)) {
+    Write-Host "[OK] Electron dependencies and binary already installed"
 } else {
-    Write-Step "Installing Electron dependencies"
-    Push-Location $DesktopDir
-    try {
-        npm ci
-        if ($LASTEXITCODE -ne 0) { throw "npm ci failed (exit code $LASTEXITCODE)" }
-    } finally {
-        Pop-Location
+    if (-not (Test-Path -LiteralPath $ElectronDir)) {
+        if (-not (Test-Path -LiteralPath $LockPath)) {
+            if ($DryRun) {
+                Write-Warning "desktop\package-lock.json is missing; npm ci cannot run."
+            } else {
+                throw "desktop\package-lock.json is missing, so 'npm ci' cannot run. Restore the lock file and retry."
+            }
+        } elseif ($DryRun) {
+            Write-DryRun "Would run: npm ci (in $DesktopDir)"
+        } else {
+            Write-Step "Installing Electron dependencies"
+            Push-Location $DesktopDir
+            try {
+                npm ci
+                if ($LASTEXITCODE -ne 0) { throw "npm ci failed (exit code $LASTEXITCODE)" }
+            } finally {
+                Pop-Location
+            }
+        }
+    }
+
+    if (-not (Test-Path -LiteralPath $ElectronExe)) {
+        if ($DryRun) {
+            Write-DryRun "Would run: node node_modules\electron\install.js (in $DesktopDir)"
+        } else {
+            Write-Step "Downloading the Electron binary"
+            if (-not (Test-Path -LiteralPath $ElectronInstallScript)) {
+                throw "Electron install script not found at $ElectronInstallScript, so the binary cannot be downloaded. Run 'npm ci' in $DesktopDir and retry."
+            }
+            Push-Location $DesktopDir
+            try {
+                node node_modules\electron\install.js
+                if ($LASTEXITCODE -ne 0) { throw "Electron binary download failed (exit code $LASTEXITCODE)" }
+            } finally {
+                Pop-Location
+            }
+            if (-not (Test-Path -LiteralPath $ElectronExe)) {
+                throw "Electron binary was not downloaded at $ElectronExe. Check network access or proxy settings and retry."
+            }
+        }
     }
 }
 

@@ -20,7 +20,8 @@ import dev.agwidgets.data.ZCodeStatus
 import dev.agwidgets.data.ZCodeStore
 import dev.agwidgets.notify.Notifier
 import dev.agwidgets.widget.LimitsWidget
-import java.time.Instant
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import java.util.concurrent.TimeUnit
 
 class RefreshWorker(
@@ -29,85 +30,14 @@ class RefreshWorker(
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result {
-        var anyNetworkFailure = false
-
-        // 1. Poll ntfy channel (Antigravity quotas + PC context summary)
-        val mode = StatusStore.getMode(applicationContext)
-        val topic = if (mode == StatusStore.MODE_ZCODE) "" else StatusStore.getTopic(applicationContext)
-        if (topic.isNotBlank()) {
-            val res = NtfyClient.fetchLatestMessage(topic)
-            res.fold(
-                onSuccess = { jsonText ->
-                    val parsed = AgStatus.fromJson(jsonText)
-                    if (parsed != null) {
-                        val (prev, curr) = StatusStore.saveNewStatus(applicationContext, jsonText)
-                        if (curr != null) {
-                            ResetAlertWorker.scheduleForBuckets(applicationContext, curr.buckets)
-                            Notifier.checkAndNotify(applicationContext, prev, curr)
-                        }
-                    } else {
-                        StatusStore.saveError(applicationContext, "Неверный JSON в сообщении ntfy")
-                    }
-                },
-                onFailure = { err ->
-                    StatusStore.saveError(applicationContext, err.message ?: "Ошибка сети ntfy")
-                    anyNetworkFailure = true
-                }
-            )
-        }
-
-        // 2. Direct ZCode API check (works autonomously on phone even when laptop is off)
-        if (BuildConfig.ZCODE_ENABLED) {
-            val zcodeToken = ZCodeStore.getToken(applicationContext)
-            if (zcodeToken.isNotBlank() && !ZCodeStore.shouldBackoffRateLimit(applicationContext)) {
-                val deviceMid = ZCodeStore.getOrCreateDeviceMid(applicationContext)
-                val seq = ZCodeStore.nextSeq(applicationContext)
-                val previous = ZCodeStore.getDirect(applicationContext)
-                val zRes = ZCodeClient.fetchStatus(zcodeToken, deviceMid, seq, previous)
-                zRes.onSuccess { zStatus ->
-                    val (prevZ, currZ) = ZCodeStore.saveDirect(applicationContext, zStatus)
-                    Notifier.checkZCodeCouponTransition(applicationContext, prevZ, currZ)
-                    if (zStatus.networkError || zStatus.errorKind != null) {
-                        val reason = when (zStatus.errorKind) {
-                            "auth_expired" -> "ZCode: токен истёк"
-                            "rate_limited" -> "ZCode: лимит запросов (429)"
-                            "server_error" -> "ZCode: ошибка сервера"
-                            "api_changed" -> "ZCode: схема API изменилась"
-                            "parse_failed" -> "ZCode: не удалось разобрать ответ"
-                            else -> "ZCode: нет связи"
-                        }
-                        StatusStore.saveError(applicationContext, reason)
-                        if (zStatus.networkError || zStatus.errorKind in RETRYABLE_ZCODE_ERRORS) {
-                            anyNetworkFailure = true
-                        }
-                    }
-                }.onFailure { err ->
-                    val fallback = previous ?: ZCodeStatus(running = true, couponVisible = false, method = "api")
-                    val failed = fallback.copy(
-                        running = true,
-                        method = "api",
-                        authOk = null,
-                        networkError = true,
-                        couponVisible = false,
-                        couponState = ZCodeStatus.COUPON_UNKNOWN,
-                        errorKind = "network",
-                        checkedAt = Instant.now().toString(),
-                    )
-                    ZCodeStore.saveDirect(applicationContext, failed)
-                    StatusStore.saveError(applicationContext, err.message ?: "Ошибка сети ZCode")
-                    anyNetworkFailure = true
-                }
-            }
-        }
-
-        LimitsWidget().updateAll(applicationContext)
+        val anyNetworkFailure = performRefresh(applicationContext)
         return if (anyNetworkFailure && runAttemptCount < 2) Result.retry() else Result.success()
     }
 
     companion object {
         private const val PERIODIC_WORK_NAME = "agw_periodic_refresh"
         private const val IMMEDIATE_WORK_NAME = "agw_immediate_refresh"
-        private val RETRYABLE_ZCODE_ERRORS = setOf("network", "server_error")
+        internal val RETRYABLE_ZCODE_ERRORS = setOf("network", "server_error")
 
         fun schedulePeriodic(context: Context) {
             val constraints = Constraints.Builder()
@@ -142,4 +72,111 @@ class RefreshWorker(
                 .cancelUniqueWork(PERIODIC_WORK_NAME)
         }
     }
+}
+
+/**
+ * One complete refresh pass: polls ntfy and the ZCode API concurrently, persists
+ * the results and repaints the widget. Kept independent of WorkManager so the
+ * widget's refresh button can run exactly the same work on the spot.
+ *
+ * @return `true` when at least one source failed in a retryable way.
+ */
+internal suspend fun performRefresh(
+    context: Context,
+    timeoutMs: Int = 15_000,
+    updateWidget: Boolean = true,
+): Boolean {
+    val appContext = context.applicationContext
+    val (ntfyNetworkFailure, zcodeNetworkFailure) = coroutineScope {
+        val ntfy = async { refreshNtfy(appContext, timeoutMs) }
+        val zcode = async { refreshZCode(appContext, timeoutMs) }
+        ntfy.await() to zcode.await()
+    }
+
+    if (updateWidget) {
+        LimitsWidget().updateAll(appContext)
+    }
+    return ntfyNetworkFailure || zcodeNetworkFailure
+}
+
+/** Polls the ntfy channel (Antigravity quotas + PC context summary). */
+private suspend fun refreshNtfy(context: Context, timeoutMs: Int): Boolean {
+    // ZCode-only mode has no PC to poll; an empty topic already skips the request.
+    val mode = StatusStore.getMode(context)
+    val topic = if (mode == StatusStore.MODE_ZCODE) "" else StatusStore.getTopic(context)
+    if (topic.isBlank()) return false
+
+    val res = NtfyClient.fetchLatestMessage(topic, timeoutMs)
+    return res.fold(
+        onSuccess = { jsonText ->
+            val parsed = AgStatus.fromJson(jsonText)
+            if (parsed != null) {
+                val (prev, curr) = StatusStore.saveNewStatus(context, jsonText)
+                if (curr != null) {
+                    ResetAlertWorker.scheduleForBuckets(context, curr.buckets)
+                    Notifier.checkAndNotify(context, prev, curr)
+                }
+            } else {
+                StatusStore.saveError(context, "Неверный JSON в сообщении ntfy")
+            }
+            false
+        },
+        onFailure = { err ->
+            StatusStore.saveError(context, err.message ?: "Ошибка сети ntfy")
+            true
+        }
+    )
+}
+
+/** Direct ZCode API check (works autonomously on phone even when laptop is off). */
+private suspend fun refreshZCode(context: Context, timeoutMs: Int): Boolean {
+    if (!BuildConfig.ZCODE_ENABLED) return false
+    val zcodeToken = ZCodeStore.getToken(context)
+    if (zcodeToken.isBlank()) return false
+    // After a 429 the platform asked us to wait; polling again re-arms the ban.
+    if (ZCodeStore.shouldBackoffRateLimit(context)) return false
+
+    val deviceMid = ZCodeStore.getOrCreateDeviceMid(context)
+    val seq = ZCodeStore.nextSeq(context)
+    val previous = ZCodeStore.getDirect(context)
+    return ZCodeClient.fetchStatus(zcodeToken, deviceMid, seq, previous, timeoutMs)
+        .fold(
+            onSuccess = { zStatus ->
+                val (prevZ, currZ) = ZCodeStore.saveDirect(context, zStatus)
+                Notifier.checkZCodeCouponTransition(context, prevZ, currZ)
+                if (zStatus.networkError || zStatus.errorKind != null) {
+                    val reason = when (zStatus.errorKind) {
+                        "auth_expired" -> "ZCode: токен истёк"
+                        "rate_limited" -> "ZCode: лимит запросов (429)"
+                        "server_error" -> "ZCode: ошибка сервера"
+                        "api_changed" -> "ZCode: схема API изменилась"
+                        "parse_failed" -> "ZCode: не удалось разобрать ответ"
+                        else -> "ZCode: нет связи"
+                    }
+                    StatusStore.saveError(context, reason)
+                    zStatus.networkError ||
+                        zStatus.errorKind in RefreshWorker.RETRYABLE_ZCODE_ERRORS
+                } else {
+                    false
+                }
+            },
+            onFailure = { err ->
+                val nowIso = java.time.Instant.now().toString()
+                val fallback = previous
+                    ?: ZCodeStatus(running = true, couponVisible = false, method = "api")
+                val failed = fallback.copy(
+                    running = true,
+                    method = "api",
+                    authOk = null,
+                    networkError = true,
+                    couponVisible = false,
+                    couponState = ZCodeStatus.COUPON_UNKNOWN,
+                    errorKind = "network",
+                    checkedAt = nowIso,
+                )
+                ZCodeStore.saveDirect(context, failed)
+                StatusStore.saveError(context, err.message ?: "Ошибка сети ZCode")
+                true
+            }
+        )
 }

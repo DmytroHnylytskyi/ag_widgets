@@ -61,17 +61,67 @@ object StatusStore {
         BuildConfig.AGW_TOPIC
     }
 
-    fun setTopic(context: Context, topic: String) {
+    /**
+     * Applies a topic change to [preferences] in a single editor commit.
+     *
+     * PC-derived cache ([KEY_LAST_JSON], [KEY_LAST_ERROR], [KEY_NOTIFIED_RESETS])
+     * belongs to exactly one topic, so it is dropped whenever the topic is
+     * cleared or actually changes. ZCode secrets are never touched: they are
+     * independent of the ntfy channel.
+     *
+     * @return `true` when the PC cache was invalidated, `false` when the topic
+     *   was re-saved unchanged (the cache stays valid).
+     */
+    internal fun applyTopicChange(
+        preferences: SharedPreferences,
+        topic: String,
+        cipher: SecretCipher,
+        builtInDefault: String = BuildConfig.AGW_TOPIC,
+    ): Boolean {
+        val stored = preferences.getString(KEY_TOPIC, null)
+        val previousTopic = when {
+            stored != null -> cipher.decrypt(stored)?.trim().orEmpty()
+            preferences.getBoolean(KEY_TOPIC_CLEARED, false) -> ""
+            else -> builtInDefault.trim()
+        }
         val trimmed = topic.trim()
+        if (trimmed.isEmpty()) {
+            preferences.edit()
+                .remove(KEY_TOPIC)
+                .putBoolean(KEY_TOPIC_CLEARED, true)
+                .remove(KEY_LAST_JSON)
+                .remove(KEY_LAST_ERROR)
+                .remove(KEY_NOTIFIED_RESETS)
+                .apply()
+            return true
+        }
+        val changed = trimmed != previousTopic
+        val edit = preferences.edit()
+            .putString(KEY_TOPIC, cipher.encrypt(trimmed))
+            .putBoolean(KEY_TOPIC_CLEARED, false)
+        if (changed) {
+            edit.remove(KEY_LAST_JSON)
+                .remove(KEY_LAST_ERROR)
+                .remove(KEY_NOTIFIED_RESETS)
+        }
+        edit.apply()
+        return changed
+    }
+
+    fun setTopic(context: Context, topic: String) {
         synchronized(lock) {
-            val edit = prefs(context).edit()
-            if (trimmed.isEmpty()) {
-                edit.remove(KEY_TOPIC).putBoolean(KEY_TOPIC_CLEARED, true).apply()
-            } else {
-                edit.putString(KEY_TOPIC, cipher.encrypt(trimmed))
-                    .putBoolean(KEY_TOPIC_CLEARED, false)
-                    .apply()
-            }
+            applyTopicChange(prefs(context), topic, cipher)
+        }
+    }
+
+    /** Drops the PC-derived cache (status, error, notified resets) but keeps ZCode. */
+    fun clearPcCache(context: Context) {
+        synchronized(lock) {
+            prefs(context).edit()
+                .remove(KEY_LAST_JSON)
+                .remove(KEY_LAST_ERROR)
+                .remove(KEY_NOTIFIED_RESETS)
+                .apply()
         }
     }
 

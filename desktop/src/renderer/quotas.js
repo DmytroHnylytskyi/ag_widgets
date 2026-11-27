@@ -54,6 +54,23 @@
     };
   }
 
+  /**
+   * Pure view model for the plan-tier badge: hidden while the tier is unknown
+   * instead of painting an empty "—" badge, with the error kept in the tooltip.
+   */
+  function planTierView(antigravity) {
+    const planTier =
+      antigravity && typeof antigravity.plan_tier === 'string' ? antigravity.plan_tier.trim() : '';
+    const error =
+      antigravity && typeof antigravity.error === 'string' ? antigravity.error.trim() : '';
+    return {
+      visible: Boolean(planTier),
+      text: planTier,
+      hasError: Boolean(error),
+      title: error ? `Квоты не обновились: ${error}` : '',
+    };
+  }
+
   function render(status) {
     const tier = document.getElementById('plan-tier');
     const list = document.getElementById('quota-list');
@@ -61,11 +78,14 @@
     const errorBox = document.getElementById('quota-error');
     const antigravity = status && status.antigravity;
     const error = antigravity && typeof antigravity.error === 'string' ? antigravity.error : '';
+    const tierView = planTierView(antigravity);
 
     if (tier) {
-      tier.textContent = antigravity && antigravity.plan_tier ? antigravity.plan_tier : '—';
-      tier.title = error ? `Квоты не обновились: ${error}` : '';
-      tier.classList.toggle('has-error', Boolean(error));
+      tier.classList.toggle('hidden', !tierView.visible);
+      tier.textContent = tierView.text;
+      if (tierView.title) tier.title = tierView.title;
+      else tier.removeAttribute('title');
+      tier.classList.toggle('has-error', tierView.hasError);
     }
     if (errorBox) {
       errorBox.textContent = error ? `Квоты не обновились: ${error}` : '';
@@ -160,9 +180,9 @@
     });
   }
 
-  AGW.quotas = { render, bucketView };
+  AGW.quotas = { render, bucketView, planTierView };
 
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { render, bucketView };
+    module.exports = { render, bucketView, planTierView };
   }
 })(typeof window !== 'undefined' ? window : globalThis);

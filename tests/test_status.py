@@ -440,10 +440,11 @@ class RunOnceTests(unittest.TestCase):
         self.assertTrue((self.state / "status.json").exists())
 
     def test_active_switch_within_min_interval_is_throttled(self):
+        self.assertEqual(status.MIN_ACTIVE_SWITCH_INTERVAL_SEC, 15)
         self._write_two_conversations()
         self.detect.return_value = {"id": "b", "title": "B"}
         self._write_publish_state(
-            time.time() - 30,
+            time.time() - 5,
             {"context_summary": {"conversation_id": "a", "active": False}},
         )
 
@@ -452,6 +453,20 @@ class RunOnceTests(unittest.TestCase):
         self.publish.assert_not_called()
         self.assertFalse(result["publish"]["published"])
         self.assertEqual(result["publish"]["reason"], "throttled_or_unchanged")
+
+    def test_active_switch_after_20s_publishes(self):
+        self._write_two_conversations()
+        self.detect.return_value = {"id": "b", "title": "B"}
+        self._write_publish_state(
+            time.time() - 20,
+            {"context_summary": {"conversation_id": "a", "active": False}},
+        )
+
+        result = status.run_once()
+
+        self.publish.assert_called_once()
+        self.assertTrue(result["publish"]["published"])
+        self.assertTrue(result["publish"]["changed"])
 
     def test_active_switch_after_min_interval_publishes(self):
         self._write_two_conversations()

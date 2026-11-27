@@ -18,6 +18,13 @@ object ZCodeClient {
         deviceMid: String,
         seq: Int = 0,
         previous: ZCodeStatus? = null,
+        timeoutMs: Int = 15_000,
     ): Result<ZCodeStatus> =
-        Result.failure(UnsupportedOperationException(UNAVAILABLE))
+        // The lite build keeps the full client's pre-flight contract: a blank
+        // token is rejected before anything else would be attempted.
+        if (token.isBlank()) {
+            Result.failure(IllegalArgumentException("Токен ZCode не задан"))
+        } else {
+            Result.failure(UnsupportedOperationException(UNAVAILABLE))
+        }
 }

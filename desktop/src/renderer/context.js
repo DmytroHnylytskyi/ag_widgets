@@ -27,6 +27,51 @@
     return lastId && context.conversations[lastId] ? context.conversations[lastId] : null;
   }
 
+  /** Trimmed snippet text, or "" for anything that is not a string. */
+  function formatSnippet(snippet) {
+    return typeof snippet === 'string' ? snippet.trim() : '';
+  }
+
+  /** Model label for a recent chat; a missing model is "", never "undefined". */
+  function recentModelLabel(item) {
+    const raw = item && typeof item.model === 'string' ? item.model.trim() : '';
+    if (!raw) return '';
+    const label = typeof prettyModel === 'function' ? prettyModel(raw) : '';
+    return typeof label === 'string' ? label.trim() : '';
+  }
+
+  /**
+   * Pure view model for a recent-chat chip: two chats of the same model get
+   * different names because the chat title comes first, and the tooltip keeps
+   * the full title/workspace/model context.
+   */
+  function formatRecentChat(id, item, chatTitles) {
+    const fromTitles =
+      chatTitles && typeof chatTitles[id] === 'string' ? chatTitles[id].trim() : '';
+    const fromItem = item && typeof item.title === 'string' ? item.title.trim() : '';
+    const title = fromTitles || fromItem;
+    const modelLabel = recentModelLabel(item);
+    const workspace = item && typeof item.workspace === 'string' ? item.workspace.trim() : '';
+
+    const label = title
+      ? modelLabel && title.toLowerCase() !== modelLabel.toLowerCase()
+        ? `${title} · ${modelLabel}`
+        : title
+      : workspace || modelLabel;
+
+    const seen = new Set();
+    const parts = [];
+    for (const part of [title, workspace, modelLabel]) {
+      if (!part) continue;
+      const key = part.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      parts.push(part);
+    }
+
+    return { label, tooltip: parts.join(' · ') };
+  }
+
   function contextInfo(context, status, activeChat) {
     const summary = (status && status.context_summary) || {};
     const activeId = (activeChat && activeChat.id) || null;
@@ -224,9 +269,11 @@
     document.getElementById('ctx-token-sub').textContent = 'токенов';
     document.getElementById('ctx-model').textContent = hasChat ? 'Ожидание ответа' : 'Ожидание диалога';
     document.getElementById('ctx-workspace').textContent = hasChat ? 'Выбранный чат' : '—';
-    document.getElementById('ctx-snippet').textContent = hasChat
+    const snippetEl = document.getElementById('ctx-snippet');
+    snippetEl.textContent = hasChat
       ? 'Ответьте модели, чтобы увидеть контекст'
       : 'Отправь запрос в Antigravity';
+    snippetEl.classList.remove('hidden');
 
     const alert = document.getElementById('ctx-alert');
     alert.classList.add('hidden');
@@ -253,7 +300,7 @@
     renderLegend(info);
   }
 
-  function renderRecent(info) {
+  function renderRecent(info, chatTitles) {
     const container = document.getElementById('ctx-recent');
     const others = Object.entries(info.conversations || {})
       .filter(([id]) => id !== info.selectedId)
@@ -267,7 +314,7 @@
     }
 
     container.classList.remove('hidden');
-    for (const [, item] of others) {
+    for (const [id, item] of others) {
       const chip = document.createElement('div');
       chip.className = 'recent-chip';
       const knownWindow = typeof item.window === 'number' && item.window > 0;
@@ -278,7 +325,9 @@
       dot.className = `dot-sm dot-${itemLevel}`;
       const name = document.createElement('span');
       name.className = 'recent-name';
-      name.textContent = item.workspace || prettyModel(item.model);
+      const recent = formatRecentChat(id, item, chatTitles);
+      name.textContent = recent.label;
+      if (recent.tooltip) chip.title = recent.tooltip;
       const tokens = document.createElement('span');
       tokens.className = 'recent-tok';
       tokens.textContent = formatTokens(item.tokens);
@@ -287,7 +336,7 @@
     }
   }
 
-  function render(context, status, activeChat) {
+  function render(context, status, activeChat, chatTitles = {}) {
     const info = contextInfo(context, status, activeChat);
     if (!info.cur) {
       renderEmpty(info);
@@ -335,7 +384,10 @@
     const age = shortAge(cur.updated_at);
     document.getElementById('ctx-workspace').textContent =
       `${cur.workspace ? `Проект: ${cur.workspace}` : 'Без проекта'}${age ? ` · ${age}` : ''}`;
-    document.getElementById('ctx-snippet').textContent = cur.snippet || '—';
+    const snippetEl = document.getElementById('ctx-snippet');
+    const snippet = formatSnippet(cur.snippet);
+    snippetEl.textContent = snippet;
+    snippetEl.classList.toggle('hidden', !snippet);
 
     const pill = document.getElementById('ctx-level-pill');
     pill.className = `status-pill level-${level === 'unknown' ? 'idle' : level}`;
@@ -357,12 +409,24 @@
 
     renderZone(info);
     renderLegend(info);
-    renderRecent(info);
+    renderRecent(info, chatTitles);
   }
 
-  AGW.context = { currentConversation, contextInfo, render };
+  AGW.context = {
+    currentConversation,
+    contextInfo,
+    render,
+    formatSnippet,
+    formatRecentChat,
+  };
 
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { currentConversation, contextInfo, render };
+    module.exports = {
+      currentConversation,
+      contextInfo,
+      render,
+      formatSnippet,
+      formatRecentChat,
+    };
   }
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -36,11 +36,28 @@ class ResetAlertWorker(
     }
 
     companion object {
+        /** Tag shared by every locally scheduled reset alert, used for bulk cancel. */
+        internal const val TAG_RESET_ALERT = "agw_reset_alert"
+
         private const val KEY_BUCKET_ID = "bucket_id"
         private const val KEY_KIND = "kind"
         private const val KEY_RESET_TIME = "reset_time"
 
         private val KNOWN_BUCKET_IDS = listOf("gemini-5h", "gemini-weekly", "3p-5h", "3p-weekly")
+
+        /**
+         * Cancels every pending reset alert.
+         *
+         * Alerts from older releases carry no tag, so the unique work names are
+         * cancelled explicitly as well.
+         */
+        fun cancelAllResetAlerts(context: Context) {
+            val wm = WorkManager.getInstance(context.applicationContext)
+            wm.cancelAllWorkByTag(TAG_RESET_ALERT)
+            for (id in KNOWN_BUCKET_IDS) {
+                wm.cancelUniqueWork("agw_reset_$id")
+            }
+        }
 
         fun scheduleForBuckets(context: Context, buckets: List<QuotaBucket>) {
             val wm = WorkManager.getInstance(context.applicationContext)
@@ -73,6 +90,7 @@ class ResetAlertWorker(
                     .build()
 
                 val req = OneTimeWorkRequestBuilder<ResetAlertWorker>()
+                    .addTag(TAG_RESET_ALERT)
                     .setInitialDelay(delayMs, TimeUnit.MILLISECONDS)
                     .setInputData(data)
                     .build()

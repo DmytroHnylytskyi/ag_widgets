@@ -13,7 +13,10 @@ object NtfyClient {
     private val TOPIC_PATTERN = Regex("^[A-Za-z0-9_-]{1,64}$")
     private const val STATUS_TITLE = "ag-widgets-status"
 
-    suspend fun fetchLatestMessage(topic: String): Result<String> = withContext(Dispatchers.IO) {
+    suspend fun fetchLatestMessage(
+        topic: String,
+        timeoutMs: Int = 15_000,
+    ): Result<String> = withContext(Dispatchers.IO) {
         val clean = topic.trim()
         if (clean.isEmpty() || !clean.matches(TOPIC_PATTERN)) {
             return@withContext Result.failure(IllegalArgumentException("Invalid ntfy topic"))
@@ -23,8 +26,8 @@ object NtfyClient {
             val url = URL("https://ntfy.sh/" + URLEncoder.encode(clean, "UTF-8") + "/json?poll=1&since=latest")
             conn = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
-                connectTimeout = 15000
-                readTimeout = 15000
+                connectTimeout = timeoutMs
+                readTimeout = timeoutMs
                 setRequestProperty("Accept", "application/x-ndjson, application/json")
             }
             val code = conn.responseCode

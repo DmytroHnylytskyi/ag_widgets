@@ -16,6 +16,7 @@ process.env.AGW_ANNOTATIONS_DIR = annotationsDir;
 
 const storage = require('../src/main/storage.js');
 const collector = require('../src/main/collector.js');
+const tray = require('../src/main/tray.js');
 
 /** Create an isolated subdirectory under the temporary root. */
 function makeDir(name) {
@@ -181,6 +182,46 @@ test('detectActiveChat ignores non-.pbtxt entries and subdirectories', () => {
   assert.equal(active.title, 'Real Chat');
 });
 
+// --- scanAnnotations -------------------------------------------------------
+
+test('scanAnnotations collects non-empty titles and the active chat in one pass', () => {
+  const dir = makeDir('annotations-scan');
+  const nowSec = Math.floor(Date.now() / 1000);
+
+  writeAnnotation(dir, 'alpha.pbtxt', { title: '  Alpha Chat  ', viewedSeconds: nowSec - 300 });
+  writeAnnotation(dir, 'beta.pbtxt', { title: 'Beta Chat', viewedSeconds: nowSec - 100 });
+  writeAnnotation(dir, 'untitled.pbtxt', { title: '', viewedSeconds: nowSec - 500 });
+
+  const scan = storage.scanAnnotations(dir);
+
+  assert.deepEqual(scan.chatTitles, { alpha: 'Alpha Chat', beta: 'Beta Chat' });
+  assert.ok(scan.activeChat);
+  assert.equal(scan.activeChat.id, 'beta');
+  assert.deepEqual(scan.activeChat, storage.detectActiveChat(dir));
+});
+
+test('scanAnnotations returns an empty result for a missing directory', () => {
+  assert.deepEqual(storage.scanAnnotations(path.join(tmpRoot, 'scan-missing')), {
+    activeChat: null,
+    chatTitles: {},
+  });
+});
+
+test('readAllState exposes chatTitles for the configured annotations dir', () => {
+  writeAnnotation(annotationsDir, 'renderer-chat.pbtxt', {
+    title: 'Renderer Chat',
+    viewedSeconds: Math.floor(Date.now() / 1000),
+    mtimeMs: Date.now(),
+  });
+
+  const state = storage.readAllState();
+
+  assert.equal(typeof state.chatTitles, 'object');
+  assert.equal(state.chatTitles['renderer-chat'], 'Renderer Chat');
+  assert.ok(state.activeChat);
+  assert.equal(state.activeChat.id, 'renderer-chat');
+});
+
 // --- writeJsonAtomic -------------------------------------------------------
 
 test('writeJsonAtomic writes valid JSON readable by readJson', () => {
@@ -296,6 +337,62 @@ test('maybePublishActiveChat runs with force:false once per active chat', async 
 
 test('collector.isRunning() stays false because no real run was started', () => {
   assert.equal(collector.isRunning(), false);
+});
+
+// --- tray.buildMenuTemplate -----------------------------------------------
+
+/** Flatten labels out of a menu template, skipping separators. */
+function collectLabels(template, labels = []) {
+  for (const item of template) {
+    if (!item || typeof item !== 'object') continue;
+    if (item.type === 'separator') continue;
+    if (typeof item.label === 'string') labels.push(item.label);
+    if (Array.isArray(item.submenu)) collectLabels(item.submenu, labels);
+  }
+  return labels;
+}
+
+const SHOW_LABEL = 'Показать виджет';
+const HIDE_LABEL = 'Свернуть в трей';
+const LOGOUT_LABEL = 'Выйти из Z.ai';
+
+test('buildMenuTemplate omits "Показать виджет" in the window menu', () => {
+  const labels = collectLabels(tray.buildMenuTemplate({ source: 'window', windowVisible: true }));
+  assert.equal(labels.includes(SHOW_LABEL), false);
+  assert.equal(labels.includes(HIDE_LABEL), true);
+});
+
+test('buildMenuTemplate offers "Показать виджет" when the tray window is hidden', () => {
+  const labels = collectLabels(tray.buildMenuTemplate({ source: 'tray', windowVisible: false }));
+  assert.equal(labels.includes(SHOW_LABEL), true);
+  assert.equal(labels.includes(HIDE_LABEL), false);
+});
+
+test('buildMenuTemplate offers "Свернуть в трей" when the tray window is visible', () => {
+  const labels = collectLabels(tray.buildMenuTemplate({ source: 'tray', windowVisible: true }));
+  assert.equal(labels.includes(HIDE_LABEL), true);
+  assert.equal(labels.includes(SHOW_LABEL), false);
+});
+
+test('buildMenuTemplate shows "Выйти из Z.ai" only for a connected ZCode', () => {
+  const connected = collectLabels(tray.buildMenuTemplate({ zcodeConnected: true }));
+  const disconnected = collectLabels(tray.buildMenuTemplate({ zcodeConnected: false }));
+  assert.equal(connected.includes(LOGOUT_LABEL), true);
+  assert.equal(disconnected.includes(LOGOUT_LABEL), false);
+});
+
+test('buildMenuTemplate routes checkbox clicks to injected handlers', () => {
+  const calls = [];
+  const template = tray.buildMenuTemplate({
+    source: 'tray',
+    windowVisible: true,
+    alwaysOnTop: true,
+    handlers: { toggleAlwaysOnTop: (checked) => calls.push(checked) },
+  });
+  const item = template.find((entry) => entry.label === 'Поверх всех окон');
+  assert.ok(item);
+  item.click({ checked: false });
+  assert.deepEqual(calls, [false]);
 });
 
 test.after(() => {

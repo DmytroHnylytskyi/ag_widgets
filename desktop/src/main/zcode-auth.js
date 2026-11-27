@@ -91,6 +91,47 @@ async function fetchJson(url, options = {}, timeoutMs = 20_000) {
 }
 
 /**
+ * Retry a JSON request on transport/network failures only. HTTP responses
+ * (4xx/5xx) are results, not exceptions, so they are never retried; a user
+ * cancellation is never retried either. Injectable for offline unit tests.
+ */
+async function fetchJsonWithRetry(
+  url,
+  options = {},
+  {
+    timeoutMs = 20_000,
+    retryDelaysMs = [300, 800],
+    fetchImpl = fetchJson,
+    sleepImpl = sleep,
+    logImpl = logError,
+  } = {},
+) {
+  const signal = options ? options.signal : undefined;
+  const isAborted = () => Boolean(signal && signal.aborted === true);
+  const delays = Array.isArray(retryDelaysMs) ? retryDelaysMs : [];
+  const attempts = 1 + delays.length;
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await fetchImpl(url, options, timeoutMs);
+    } catch (error) {
+      // A cancelled sign-in must stop immediately; HTTP errors never get here.
+      if (isAborted() || attempt >= attempts - 1) throw error;
+      try {
+        logImpl('zcode-login-retry', error);
+      } catch {
+        // Diagnostics must not break the retry loop.
+      }
+      await sleepImpl(delays[attempt], signal);
+      if (isAborted()) throw error;
+    }
+  }
+
+  // Unreachable: the last attempt either returns or throws.
+  throw new Error('Request failed');
+}
+
+/**
  * Only open Z.ai HTTPS URLs, never an arbitrary scheme or host from a server
  * response, and never a URL carrying credentials or a non-standard port.
  */
@@ -113,7 +154,8 @@ function isTrustedAuthorizeUrl(value) {
  * Run the ZCode OAuth flow: open the browser, poll until the server returns a
  * token, save it through the Python DPAPI bridge, and refresh the collector.
  */
-async function zcodeLogin() {
+async function zcodeLogin(deps = {}) {
+  const { fetchJsonImpl = fetchJsonWithRetry, logErrorImpl = logError } = deps || {};
   if (loginInFlight) return { ok: false, error: 'Login already in progress' };
   loginInFlight = true;
   const controller = new AbortController();
@@ -126,9 +168,11 @@ async function zcodeLogin() {
       Accept: 'application/json',
     };
 
-    const init = await fetchJson(ZCODE_INIT_URL, {
+    // `Connection: close` stops Undici from reusing a keep-alive socket that
+    // the server may have dropped right after a sign-out.
+    const init = await fetchJsonImpl(ZCODE_INIT_URL, {
       method: 'POST',
-      headers: { ...authHeaders, 'Content-Type': 'application/json' },
+      headers: { ...authHeaders, 'Content-Type': 'application/json', Connection: 'close' },
       body: JSON.stringify({ provider: 'zai' }),
       signal: controller.signal,
     });
@@ -209,6 +253,11 @@ async function zcodeLogin() {
     throw new Error('Sign-in timed out');
   } catch (error) {
     if (controller.signal.aborted) return cancelledResult();
+    try {
+      logErrorImpl('zcode-login', error);
+    } catch {
+      // Diagnostics must never mask the sign-in failure.
+    }
     return { ok: false, error: String((error && error.message) || error) };
   } finally {
     loginInFlight = false;
@@ -244,8 +293,18 @@ async function zcodeLogout() {
     }
     cleared = true;
 
-    const refreshed = await runCollector({ force: true, waitIfBusy: true });
-    return { ok: true, cleared: true, refreshed: Boolean(refreshed && refreshed.ok) };
+    // A sign-out must never block the UI on a collector run: ask for a
+    // non-blocking refresh and fall back to a background one when busy.
+    const refreshed = await runCollector({ force: false, waitIfBusy: false });
+    if (refreshed && refreshed.busy === true) {
+      runCollector({ force: false, waitIfBusy: true }).catch(() => {});
+      return { ok: true, cleared: true, refreshed: false };
+    }
+    return {
+      ok: true,
+      cleared: true,
+      refreshed: Boolean(refreshed && refreshed.ok),
+    };
   } catch (error) {
     logError('zcode-token', error);
     return {
@@ -257,4 +316,10 @@ async function zcodeLogout() {
   }
 }
 
-module.exports = { zcodeLogin, cancelZCodeLogin, zcodeLogout, isTrustedAuthorizeUrl };
+module.exports = {
+  zcodeLogin,
+  cancelZCodeLogin,
+  zcodeLogout,
+  fetchJsonWithRetry,
+  isTrustedAuthorizeUrl,
+};

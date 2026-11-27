@@ -10,6 +10,7 @@ import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.Image
 import androidx.glance.ImageProvider
+import androidx.glance.LocalSize
 import androidx.glance.action.ActionParameters
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
@@ -19,6 +20,7 @@ import androidx.glance.appwidget.action.ActionCallback
 import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
+import androidx.glance.appwidget.updateAll
 import androidx.glance.background
 import androidx.glance.color.ColorProvider as dayNightColorProvider
 import androidx.glance.layout.Alignment
@@ -48,11 +50,17 @@ import dev.agwidgets.data.ZCodeStatus
 import dev.agwidgets.ui.formatCountdownShort
 import dev.agwidgets.ui.formatK
 import dev.agwidgets.ui.formatUnits
+import dev.agwidgets.ui.formatWindow
 import dev.agwidgets.ui.parseInstant
-import dev.agwidgets.work.RefreshWorker
+import dev.agwidgets.ui.prettyModel
+import dev.agwidgets.work.performRefresh
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.roundToInt
 
 class RefreshActionCallback : ActionCallback {
@@ -61,8 +69,39 @@ class RefreshActionCallback : ActionCallback {
         glanceId: GlanceId,
         parameters: ActionParameters
     ) {
-        RefreshWorker.runNow(context)
+        // Rapid taps must not stack overlapping network passes.
+        if (!refreshInFlight.compareAndSet(false, true)) return
+        val appContext = context.applicationContext
+        try {
+            // Hard cap keeps the launcher's action window happy even if a host
+            // ignores the short per-request timeouts.
+            withTimeoutOrNull(8_500L) {
+                withContext(Dispatchers.IO) {
+                    performRefresh(appContext, timeoutMs = 4_000, updateWidget = false)
+                }
+            }
+        } finally {
+            runCatching { LimitsWidget().updateAll(appContext) }
+            refreshInFlight.set(false)
+        }
     }
+
+    private companion object {
+        private val refreshInFlight = AtomicBoolean(false)
+    }
+}
+
+/** Widget height buckets used to adapt spacing and extra sections. */
+internal enum class WidgetLayoutMode { COMPACT, STANDARD, EXPANDED }
+
+/**
+ * Height in dp below 165 is COMPACT, 165..215 inclusive is STANDARD and
+ * anything above 215 is EXPANDED.
+ */
+internal fun widgetLayoutMode(heightDp: Float): WidgetLayoutMode = when {
+    heightDp < 165f -> WidgetLayoutMode.COMPACT
+    heightDp <= 215f -> WidgetLayoutMode.STANDARD
+    else -> WidgetLayoutMode.EXPANDED
 }
 
 class LimitsWidget : GlanceAppWidget() {
@@ -93,6 +132,8 @@ private fun themed(light: Color, darkColor: Color, mode: String): ColorProvider 
 
 @Composable
 private fun WidgetContent(status: AgStatus?, themeMode: String, dark: Boolean) {
+    val size = LocalSize.current
+    val mode = widgetLayoutMode(size.height.value)
     val fg = themed(Color(0xFF09090B), Color.White, themeMode)
     val muted = themed(Color(0xFF52525B), Color(0xB8FFFFFF), themeMode)
     val subtle = themed(Color(0xFF6B6B76), Color(0x8AFFFFFF), themeMode)
@@ -117,7 +158,7 @@ private fun WidgetContent(status: AgStatus?, themeMode: String, dark: Boolean) {
         Column(
             modifier = GlanceModifier
                 .fillMaxSize()
-                .padding(horizontal = 15.dp, vertical = 12.dp),
+                .padding(start = 15.dp, end = 12.dp, top = 6.dp, bottom = 12.dp),
             verticalAlignment = Alignment.Top
         ) {
             // Header
@@ -244,7 +285,29 @@ private fun WidgetContent(status: AgStatus?, themeMode: String, dark: Boolean) {
                     }
                 }
 
-                Spacer(modifier = GlanceModifier.defaultWeight())
+                // No weight-based filler: a flexible spacer turns into a visible
+                // hole as soon as the host grants more height than we need.
+                when (mode) {
+                    WidgetLayoutMode.COMPACT ->
+                        Spacer(modifier = GlanceModifier.height(6.dp))
+                    WidgetLayoutMode.STANDARD ->
+                        Spacer(modifier = GlanceModifier.height(10.dp))
+                    WidgetLayoutMode.EXPANDED -> {
+                        val contextSummary = status.contextSummary
+                        if (contextSummary?.tokens != null) {
+                            ContextSection(
+                                ctx = contextSummary,
+                                fg = fg,
+                                muted = muted,
+                                subtle = subtle,
+                                accentArgb = accentArgb,
+                                dark = dark
+                            )
+                        } else {
+                            Spacer(modifier = GlanceModifier.height(10.dp))
+                        }
+                    }
+                }
 
                 Row(
                     modifier = GlanceModifier.fillMaxWidth(),
@@ -279,23 +342,110 @@ private fun WidgetContent(status: AgStatus?, themeMode: String, dark: Boolean) {
 
 @Composable
 private fun RefreshIcon(themeMode: String, tint: ColorProvider) {
+    // 42x40 tap target around a small visible pill: the pill alone is too small
+    // to hit reliably, and the clickable modifier must live on the outer box.
     Box(
         modifier = GlanceModifier
             .clickable(actionRunCallback<RefreshActionCallback>())
-            .background(themed(Color(0x0F09090B), Color(0x1FFFFFFF), themeMode))
-            .cornerRadius(9.dp)
-            .padding(horizontal = 6.dp, vertical = 1.dp),
+            .width(42.dp)
+            .height(40.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = "⟳",
-            style = TextStyle(
-                color = tint,
-                fontSize = 11.sp,
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Medium
+        Box(
+            modifier = GlanceModifier
+                .width(26.dp)
+                .height(24.dp)
+                .background(themed(Color(0x0F09090B), Color(0x1FFFFFFF), themeMode))
+                .cornerRadius(9.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "⟳",
+                style = TextStyle(
+                    color = tint,
+                    fontSize = 13.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Medium
+                ),
+                maxLines = 1
+            )
+        }
+    }
+}
+
+/** Expand-mode block: active chat model, token usage and its colour-coded bar. */
+@Composable
+private fun ContextSection(
+    ctx: ContextSummary,
+    fg: ColorProvider,
+    muted: ColorProvider,
+    subtle: ColorProvider,
+    accentArgb: Color,
+    dark: Boolean
+) {
+    val tokens = ctx.tokens ?: return
+    val window = ctx.window
+    val pct = ctx.pct ?: window?.takeIf { it > 0 }?.let { tokens * 100.0 / it }
+    val fraction = (pct?.div(100.0) ?: 0.0).toFloat().coerceIn(0f, 1f)
+    val barColor: Color = when (ctx.level) {
+        "red" -> if (dark) Color(0xFFFF4D6D) else Color(0xFFBE123C)
+        "yellow" -> if (dark) Color(0xFFF5A623) else Color(0xFFB45309)
+        "unknown" -> if (dark) Color(0xFF8F8F9A) else Color(0xFF6B6B76)
+        "green" -> if (dark) Color(0xFF4EF2D2) else Color(0xFF047857)
+        else -> accentArgb
+    }
+    val trackArgb = if (dark) Color(0x1FFFFFFF) else Color(0x1F09090B)
+
+    Column(
+        modifier = GlanceModifier
+            .fillMaxWidth()
+            .padding(top = 10.dp, bottom = 10.dp)
+    ) {
+        Row(
+            modifier = GlanceModifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "CONTEXT",
+                style = TextStyle(
+                    color = muted,
+                    fontSize = 8.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Medium
+                ),
+                maxLines = 1
+            )
+            Spacer(modifier = GlanceModifier.width(6.dp))
+            Text(
+                text = prettyModel(ctx.model.orEmpty().ifBlank { "—" }),
+                style = TextStyle(color = fg, fontSize = 10.sp, fontWeight = FontWeight.Bold),
+                maxLines = 1,
+                modifier = GlanceModifier.defaultWeight()
+            )
+            Spacer(modifier = GlanceModifier.width(6.dp))
+            Text(
+                text = buildString {
+                    append(formatK(tokens))
+                    append(" / ")
+                    append(window?.let { formatWindow(it) } ?: "—")
+                    pct?.let { append(" (").append(it.roundToInt()).append("%)") }
+                },
+                style = TextStyle(
+                    color = subtle,
+                    fontSize = 9.sp,
+                    fontFamily = FontFamily.Monospace
+                ),
+                maxLines = 1
+            )
+        }
+        Spacer(modifier = GlanceModifier.height(4.dp))
+        Image(
+            provider = ImageProvider(
+                BarRenderer.renderBar(fraction, barColor.toArgb(), trackArgb.toArgb())
             ),
-            maxLines = 1
+            contentDescription = null,
+            contentScale = ContentScale.FillBounds,
+            modifier = GlanceModifier.fillMaxWidth().height(3.dp)
         )
     }
 }

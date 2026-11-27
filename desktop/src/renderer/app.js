@@ -10,7 +10,7 @@
   const THEME_KEY = 'agw-theme';
   const REFRESH_TITLE = 'Обновить данные (F5)';
 
-  let latestState = { context: null, status: null, activeChat: null };
+  let latestState = { context: null, status: null, activeChat: null, chatTitles: {} };
 
   function normalizeTheme(value) {
     return value === 'light' || value === 'dark' ? value : 'dark';
@@ -138,13 +138,13 @@
   }
 
   function renderViews(state) {
-    AGW.context.render(state.context, state.status, state.activeChat);
+    AGW.context.render(state.context, state.status, state.activeChat, state.chatTitles);
     AGW.quotas.render(state.status);
     AGW.zcode.render(state.status);
   }
 
   function render(state) {
-    latestState = state || { context: null, status: null, activeChat: null };
+    latestState = state || { context: null, status: null, activeChat: null, chatTitles: {} };
     renderHeader(latestState);
     renderViews(latestState);
   }
@@ -270,9 +270,12 @@
 
   if (bridge) {
     bridge.onStateUpdate(render);
-    bridge.getState().then(render).catch(() => render({ context: null, status: null, activeChat: null }));
+    bridge
+      .getState()
+      .then(render)
+      .catch(() => render({ context: null, status: null, activeChat: null, chatTitles: {} }));
   } else {
-    render({ context: null, status: null, activeChat: null });
+    render({ context: null, status: null, activeChat: null, chatTitles: {} });
   }
 
   // Re-render periodically so relative ages and the live dot keep aging even

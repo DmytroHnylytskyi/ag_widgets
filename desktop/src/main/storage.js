@@ -83,18 +83,21 @@ function parseAnnotation(text, fallbackViewedAtSeconds) {
 }
 
 /**
- * The annotation file with the latest `last_user_view_time` (mtime only as a
- * fallback when the timestamp is missing) corresponds to the chat currently
- * open in Antigravity. Only ids and titles are exposed; message text never
- * leaves Antigravity. A single unreadable file is skipped; an unreadable
- * directory yields null.
+ * Read every annotation once and derive both derived views from that pass.
+ *
+ * `activeChat` is the file with the latest `last_user_view_time` (mtime only as
+ * a fallback when the timestamp is missing). `chatTitles` maps every
+ * conversation id with a non-empty trimmed title to that title. Only ids and
+ * titles are exposed; message text never leaves Antigravity. A single
+ * unreadable file is skipped; an unreadable directory yields no results.
  */
-function detectActiveChat(dir = ANNOTATIONS_DIR) {
+function scanAnnotations(dir = ANNOTATIONS_DIR) {
+  const chatTitles = {};
   let entries;
   try {
     entries = fs.readdirSync(dir, { withFileTypes: true });
   } catch {
-    return null;
+    return { activeChat: null, chatTitles };
   }
 
   let best = null;
@@ -104,8 +107,12 @@ function detectActiveChat(dir = ANNOTATIONS_DIR) {
     try {
       const mtimeMs = fs.statSync(filePath).mtimeMs;
       const parsed = parseAnnotation(fs.readFileSync(filePath, 'utf8'), Math.round(mtimeMs / 1000));
+      const id = entry.name.replace(/\.pbtxt$/, '');
+      const trimmedTitle = typeof parsed.title === 'string' ? parsed.title.trim() : '';
+      if (trimmedTitle) chatTitles[id] = trimmedTitle;
+
       const candidate = {
-        id: entry.name.replace(/\.pbtxt$/, ''),
+        id,
         title: parsed.title,
         viewedAt: parsed.viewedAt,
         mtimeMs,
@@ -122,8 +129,15 @@ function detectActiveChat(dir = ANNOTATIONS_DIR) {
     }
   }
 
-  if (!best) return null;
-  return { id: best.id, title: best.title, viewedAt: best.viewedAt };
+  return {
+    activeChat: best ? { id: best.id, title: best.title, viewedAt: best.viewedAt } : null,
+    chatTitles,
+  };
+}
+
+/** Chat currently open in Antigravity; delegates to the single scan. */
+function detectActiveChat(dir = ANNOTATIONS_DIR) {
+  return scanAnnotations(dir).activeChat;
 }
 
 /** Compatibility wrapper used by collector.js and readAllState. */
@@ -133,10 +147,12 @@ function readActiveChat() {
 
 /** Snapshot consumed by the renderer. */
 function readAllState() {
+  const scan = scanAnnotations(ANNOTATIONS_DIR);
   return {
     context: readJson(CONTEXT_PATH),
     status: readJson(STATUS_PATH),
-    activeChat: readActiveChat(),
+    activeChat: scan.activeChat,
+    chatTitles: scan.chatTitles,
     now: Date.now(),
   };
 }
@@ -270,6 +286,7 @@ module.exports = {
   readJson,
   writeJsonAtomic,
   parseAnnotation,
+  scanAnnotations,
   detectActiveChat,
   readActiveChat,
   readAllState,
