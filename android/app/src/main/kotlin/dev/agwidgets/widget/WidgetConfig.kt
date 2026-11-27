@@ -33,7 +33,7 @@ object WidgetThemes {
         "dark" -> GRAPHITE
         "light" -> PAPER
         in all -> value
-        else -> SYSTEM
+        else -> CLASSIC
     }
 }
 
@@ -89,7 +89,7 @@ data class WidgetBlockConfig(
  * 14dp radius, so a freshly placed widget looks exactly like before.
  */
 data class WidgetConfig(
-    val theme: String = WidgetThemes.SYSTEM,
+    val theme: String = WidgetThemes.CLASSIC,
     val customAccent: String? = null,
     val opacity: Float = WidgetConfigCodec.DEFAULT_OPACITY,
     val cornerRadiusDp: Int = WidgetConfigCodec.DEFAULT_CORNER_RADIUS,
@@ -131,7 +131,7 @@ object WidgetPresets {
         previewCols = 4,
         previewRows = 2,
         config = WidgetConfig(
-            theme = WidgetThemes.SYSTEM,
+            theme = WidgetThemes.CLASSIC,
             opacity = 0.95f,
             cornerRadiusDp = 14,
             density = WidgetDensity.COMFORTABLE,
@@ -173,7 +173,7 @@ object WidgetPresets {
         previewCols = 4,
         previewRows = 1,
         config = WidgetConfig(
-            theme = WidgetThemes.SYSTEM,
+            theme = WidgetThemes.CLASSIC,
             opacity = 0.95f,
             cornerRadiusDp = 14,
             density = WidgetDensity.COMPACT,
@@ -193,7 +193,7 @@ object WidgetPresets {
         previewCols = 4,
         previewRows = 3,
         config = WidgetConfig(
-            theme = WidgetThemes.SYSTEM,
+            theme = WidgetThemes.CLASSIC,
             opacity = 0.95f,
             cornerRadiusDp = 14,
             density = WidgetDensity.SPACIOUS,
@@ -213,7 +213,7 @@ object WidgetPresets {
         previewCols = 2,
         previewRows = 1,
         config = WidgetConfig(
-            theme = WidgetThemes.SYSTEM,
+            theme = WidgetThemes.CLASSIC,
             opacity = 0.95f,
             cornerRadiusDp = 14,
             density = WidgetDensity.COMPACT,
@@ -419,7 +419,7 @@ object WidgetConfigCodec {
         }
         return normalize(
             WidgetConfig(
-                theme = raw.optString("theme", WidgetThemes.SYSTEM),
+                theme = raw.optString("theme", WidgetThemes.CLASSIC),
                 customAccent = raw.opt("custom_accent") as? String,
                 opacity = (raw.opt("opacity") as? Number)?.toFloat() ?: DEFAULT_OPACITY,
                 cornerRadiusDp = clampCornerRadius(

@@ -50,11 +50,14 @@ class ThemeResolutionTest {
     }
 
     @Test
-    fun normalizeFallsBackToSystemForMissingOrUnknownValues() {
-        assertEquals(AgThemeMode.SYSTEM, normalizeThemeMode(null))
-        assertEquals(AgThemeMode.SYSTEM, normalizeThemeMode(""))
-        assertEquals(AgThemeMode.SYSTEM, normalizeThemeMode("   "))
-        assertEquals(AgThemeMode.SYSTEM, normalizeThemeMode("neon"))
+    fun normalizeFallsBackToTheAuthorClassicThemeForMissingOrUnknownValues() {
+        // The default look is the author's own theme; the other five modes are
+        // opt-in customization, so a missing/unknown value must not pick them.
+        assertEquals(AgThemeMode.CLASSIC, normalizeThemeMode(null))
+        assertEquals(AgThemeMode.CLASSIC, normalizeThemeMode(""))
+        assertEquals(AgThemeMode.CLASSIC, normalizeThemeMode("   "))
+        assertEquals(AgThemeMode.CLASSIC, normalizeThemeMode("neon"))
+        assertEquals(AgThemeMode.SYSTEM, normalizeThemeMode("system"))
     }
 
     // ---- resolveAgTheme -------------------------------------------------
