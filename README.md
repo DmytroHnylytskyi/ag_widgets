@@ -79,7 +79,7 @@ desktop/              Electron app
   src/renderer/       format, context, quotas, zcode, preview, app
 android/              Kotlin app, Glance widget, WorkManager jobs
 tests/                Python unit tests
-docs/                 preview image and context-health notes
+docs/                 install guides (EN/RU), agent runbook, preview image, context-health notes
 ```
 
 Runtime data never lives in the repository:
@@ -96,9 +96,9 @@ Runtime data never lives in the repository:
 ## Requirements
 
 - Windows 10/11 (acrylic blur requires Windows 11 22H2+)
-- Python 3.10+
+- Python 3.10+ ([python.org](https://www.python.org/downloads/) build, not the Microsoft Store stub)
 - Node.js 22.12+ and npm (Electron 45)
-- [Google Antigravity](https://antigravity.google) with the `agy` CLI on PATH
+- [Google Antigravity](https://antigravity.google) — `agy.exe` is auto-detected in `~/.gemini/bin/agy.exe` (being on `PATH` is not required; `AGY_PATH` overrides)
 - Optional: JDK 17 + Android SDK for the Android app
 
 ---
@@ -110,6 +110,8 @@ git clone https://github.com/DmytroHnylytskyi/ag_widgets.git ag-widgets
 cd ag-widgets
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
+
+**Detailed guide:** [docs/INSTALL_GUIDE.md](docs/INSTALL_GUIDE.md) · **Agent runbook:** [docs/AGENT_INSTALL.md](docs/AGENT_INSTALL.md)
 
 The installer:
 
@@ -135,6 +137,18 @@ Useful flags:
 `-Uninstall` removes only the entries ag-widgets registered and leaves `%LOCALAPPDATA%\ag-widgets` untouched.
 
 > The ntfy topic is a secret. Anyone who knows it can read your published numbers. The topic and the ZCode token live in `secrets.json` — on Windows both are encrypted with DPAPI (`dpapi:v1:`); on Android they sit in private `SharedPreferences` under `AndroidKeyStore` AES-256-GCM (`ks:v1:`). Do not commit or share them.
+
+### Install with an AI Agent (1 prompt)
+
+Paste this into your AI agent (Antigravity, ZCode, Cursor, Claude Code, ...):
+
+```text
+Read docs/AGENT_INSTALL.md in this repository and install AG Widgets on my Windows machine.
+Start with Phase 0 (read-only recon) and show me the doctor report and the install.ps1 -DryRun plan.
+Do not run install.ps1 (without -DryRun), adb install, or -Uninstall until I explicitly confirm.
+```
+
+If you also want the Android part, tell the agent which build to install: **AG Widgets** (Antigravity + ZCode) or **AG Context** (Antigravity only).
 
 ### Launch
 
@@ -247,7 +261,7 @@ The Antigravity CLI reports the exact `context_window_size`; the status line cac
 
 ### Download
 
-Both are signed community builds with no personal ntfy topic. Checksums are attached to the release.
+Both are signed community builds with no personal ntfy topic. Checksums (`.sha256` files) are attached to the release — verify them before installing.
 
 - **AG Widgets 1.0.0** (recommended, Antigravity + ZCode):
   https://github.com/DmytroHnylytskyi/ag_widgets/releases/latest/download/AG-Widgets-1.0.0.apk
@@ -289,7 +303,7 @@ android/app/build/outputs/apk/context/release/app-context-release.apk
    - **With a PC**: paste the `ntfy_topic` printed by the desktop installer.
 3. Tap **Обновить**, then **Добавить виджет на экран**.
 
-The app refreshes every 15 minutes (WorkManager minimum). Manual refresh: the button in the app or **⟳** in the context card. A tap on the widget opens the app; the **⟳** button on the widget refreshes the data manually. After switching chats on the PC, the desktop publishes the new active chat immediately; press **⟳** on the phone to pick it up.
+The app refreshes every 15 minutes (WorkManager minimum). Manual refresh: the button in the app, **⟳** in the context card, or the **⟳** button on the widget, which refreshes directly (ntfy + ZCode, ~4 s timeout) instead of waiting for the WorkManager cycle. A tap on the widget opens the app. Drag the widget taller to reveal the extended context bar. After switching chats on the PC, the desktop publishes the new active chat immediately; press **⟳** on the phone to pick it up.
 
 > Application ids are `dev.agwidgets` (AG Widgets) and `dev.agwidgets.context` (AG Context). The two builds can be installed side by side. An older private build under `dev.dmitr.agwidgets` must be uninstalled first.
 

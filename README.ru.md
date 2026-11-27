@@ -79,7 +79,7 @@ desktop/              Electron-приложение
   src/renderer/       форматирование, контекст, квоты, ZCode, превью, загрузка
 android/              Kotlin-приложение, Glance-виджет, WorkManager
 tests/                юнит-тесты Python
-docs/                 превью и заметки о здоровье контекста
+docs/                 руководства по установке (EN/RU), runbook для агентов, превью, заметки о контексте
 ```
 
 Runtime-данные никогда не лежат в репозитории:
@@ -96,9 +96,9 @@ Runtime-данные никогда не лежат в репозитории:
 ## Требования
 
 - Windows 10/11 (acrylic-блюр — только Windows 11 22H2+)
-- Python 3.10+
+- Python 3.10+ ([python.org](https://www.python.org/downloads/), не заглушка Microsoft Store)
 - Node.js 22.12+ и npm (Electron 45)
-- [Google Antigravity](https://antigravity.google) с CLI `agy` в PATH
+- [Google Antigravity](https://antigravity.google) — `agy.exe` определяется автоматически в `~/.gemini/bin/agy.exe` (PATH не обязателен; `AGY_PATH` переопределяет)
 - Опционально: JDK 17 и Android SDK для Android-приложения
 
 ---
@@ -110,6 +110,8 @@ git clone https://github.com/DmytroHnylytskyi/ag_widgets.git ag-widgets
 cd ag-widgets
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
+
+**Подробное руководство:** [docs/INSTALL_GUIDE.ru.md](docs/INSTALL_GUIDE.ru.md) · **Runbook для ИИ-агента:** [docs/AGENT_INSTALL.md](docs/AGENT_INSTALL.md)
 
 Установщик:
 
@@ -135,6 +137,18 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 `-DryRun` ничего не пишет. `-Uninstall` удаляет только записи, которые зарегистрировал ag-widgets, и не трогает `%LOCALAPPDATA%\ag-widgets`.
 
 > `ntfy_topic` — секрет: кто знает топик, тот читает опубликованные числа. Топик и токен ZCode лежат в `secrets.json`; на Windows они зашифрованы DPAPI (`dpapi:v1:`), на Android — в приватных `SharedPreferences` под `AndroidKeyStore` AES-256-GCM (`ks:v1:`). Не коммитьте и не передавайте их.
+
+### Установить через ИИ-агента (1 промт)
+
+Вставьте это в своего ИИ-агента (Antigravity, ZCode, Cursor, Claude Code, ...):
+
+```text
+Прочитай docs/AGENT_INSTALL.md в этом репозитории и установи AG Widgets на мою машину с Windows.
+Начни с этапа 0 (recon только для чтения) и покажи мне отчёт doctor и план install.ps1 -DryRun.
+Не запускай install.ps1 (без -DryRun), adb install или -Uninstall, пока я явно не подтвержу.
+```
+
+Если нужна и Android-часть, скажите агенту, какую сборку ставить: **AG Widgets** (Antigravity + ZCode) или **AG Context** (только Antigravity).
 
 ### Запуск
 
@@ -247,7 +261,7 @@ Antigravity CLI отдаёт точное `context_window_size`; statusLine кэ
 
 ### Скачать
 
-Обе сборки — подписанные community-APK без личного ntfy-топика.
+Обе сборки — подписанные community-APK без личного ntfy-топика. К релизу приложены контрольные суммы (файлы `.sha256`) — сверьте их перед установкой.
 
 - **AG Widgets 1.0.0** (рекомендуется, Antigravity + ZCode):
   https://github.com/DmytroHnylytskyi/ag_widgets/releases/latest/download/AG-Widgets-1.0.0.apk
@@ -289,7 +303,7 @@ android/app/build/outputs/apk/context/release/app-context-release.apk
    - **С компьютером**: вставьте `ntfy_topic`, который напечатал установщик.
 3. Нажмите **Обновить**, затем **Добавить виджет на экран**.
 
-Приложение обновляется каждые 15 минут (минимум WorkManager). Вручную: кнопка в приложении или **⟳** в карточке контекста. Тап по виджету открывает приложение, а кнопка **⟳** на виджете обновляет данные вручную. После переключения чата на ПК десктоп публикует новый активный чат сразу; на телефоне нажмите **⟳**, чтобы подхватить его.
+Приложение обновляется каждые 15 минут (минимум WorkManager). Вручную: кнопка в приложении, **⟳** в карточке контекста или **⟳** на виджете — она обновляет напрямую (ntfy + ZCode, таймаут ~4 с), не дожидаясь цикла WorkManager. Тап по виджету открывает приложение. Если растянуть виджет по высоте, откроется расширенная полоса контекста. После переключения чата на ПК десктоп публикует новый активный чат сразу; на телефоне нажмите **⟳**, чтобы подхватить его.
 
 > applicationId — `dev.agwidgets` (AG Widgets) и `dev.agwidgets.context` (AG Context). Обе сборки могут стоять одновременно. Старое приватное приложение `dev.dmitr.agwidgets` нужно удалить: Android не переносит настройки между applicationId.
 
