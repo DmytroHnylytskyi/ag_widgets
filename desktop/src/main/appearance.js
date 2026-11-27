@@ -205,7 +205,9 @@ const PRESET_IDS = Object.keys(BUILT_IN_PRESETS);
 function buildDefaultAppearance() {
   return {
     schema_version: 1,
-    theme: 'system',
+    // The author's original look stays the default; every other theme
+    // (including `system`) is one click away in Settings.
+    theme: 'classic',
     classic_variant: 'dark',
     custom_accent: null,
     opacity: 1.0,

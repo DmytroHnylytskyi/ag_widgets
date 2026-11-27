@@ -279,6 +279,19 @@ function cancelZCodeLogin() {
 }
 
 /**
+ * Collector options for the refresh that follows a sign-out.
+ *
+ * `force: true` publishes the signed-out state right away: with a plain refresh
+ * the phone keeps showing the old ZCode balance until the heartbeat or until
+ * `changed && elapsed >= MIN_PUBLISH_INTERVAL_SEC` (~10 minutes).
+ * `waitIfBusy: false` keeps the UI responsive when a collector run is already
+ * in flight; the caller falls back to a background run in that case.
+ */
+function logoutRefreshOptions() {
+  return { force: true, waitIfBusy: false };
+}
+
+/**
  * Forget the saved ZCode token through the Python DPAPI bridge and refresh the
  * collector so the widget switches to the signed-out state immediately.
  */
@@ -295,9 +308,9 @@ async function zcodeLogout() {
 
     // A sign-out must never block the UI on a collector run: ask for a
     // non-blocking refresh and fall back to a background one when busy.
-    const refreshed = await runCollector({ force: false, waitIfBusy: false });
+    const refreshed = await runCollector(logoutRefreshOptions());
     if (refreshed && refreshed.busy === true) {
-      runCollector({ force: false, waitIfBusy: true }).catch(() => {});
+      runCollector({ force: true, waitIfBusy: true }).catch(() => {});
       return { ok: true, cleared: true, refreshed: false };
     }
     return {
@@ -320,6 +333,7 @@ module.exports = {
   zcodeLogin,
   cancelZCodeLogin,
   zcodeLogout,
+  logoutRefreshOptions,
   fetchJsonWithRetry,
   isTrustedAuthorizeUrl,
 };

@@ -30,7 +30,8 @@ data class ResolvedAgTheme(
 
 /**
  * Maps stored values onto a known mode. Legacy `dark`/`light` come from older
- * releases; anything unknown falls back to `system` instead of throwing.
+ * releases; anything unknown falls back to the author's `classic` theme, which
+ * is the default look. The other themes (including `system`) stay selectable.
  */
 fun normalizeThemeMode(raw: String?): String {
     val value = raw?.trim()?.lowercase().orEmpty()
@@ -38,7 +39,7 @@ fun normalizeThemeMode(raw: String?): String {
         "dark" -> AgThemeMode.GRAPHITE
         "light" -> AgThemeMode.PAPER
         in AgThemeMode.all -> value
-        else -> AgThemeMode.SYSTEM
+        else -> AgThemeMode.CLASSIC
     }
 }
 

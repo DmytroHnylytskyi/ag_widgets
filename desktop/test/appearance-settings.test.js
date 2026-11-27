@@ -50,9 +50,23 @@ test('normalizeAppearance migrates legacy and unknown themes', () => {
   assert.equal(appearance.normalizeAppearance({ theme: 'DARK' }).theme, 'graphite');
   assert.equal(appearance.normalizeAppearance({ theme: 'light' }).theme, 'paper');
   assert.equal(appearance.normalizeAppearance({ theme: ' Light ' }).theme, 'paper');
-  assert.equal(appearance.normalizeAppearance({ theme: 'neon' }).theme, 'system');
-  assert.equal(appearance.normalizeAppearance({ theme: '' }).theme, 'system');
-  assert.equal(appearance.normalizeAppearance({ theme: 7 }).theme, 'system');
+  assert.equal(appearance.normalizeAppearance({ theme: 'neon' }).theme, 'classic');
+  assert.equal(appearance.normalizeAppearance({ theme: '' }).theme, 'classic');
+  assert.equal(appearance.normalizeAppearance({ theme: 7 }).theme, 'classic');
+});
+
+test('the author classic theme is the default, every other theme stays selectable', () => {
+  // A fresh install must look like the original widget (acrylic window
+  // included); the redesign themes are the customization, not the default.
+  assert.equal(appearance.DEFAULT_APPEARANCE.theme, 'classic');
+  assert.equal(appearance.resolveEffectiveTheme(appearance.DEFAULT_APPEARANCE, true), 'classic-dark');
+  for (const theme of ['system', 'graphite', 'paper', 'oled', 'glass']) {
+    assert.equal(
+      appearance.normalizeAppearance({ theme }).theme,
+      theme,
+      `${theme} must stay selectable`,
+    );
+  }
 });
 
 test('normalizeAppearance normalizes classic_variant and schema_version', () => {

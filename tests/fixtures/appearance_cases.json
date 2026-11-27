@@ -289,7 +289,7 @@
     {
       "name": "accent_and_radius",
       "input": "{\"custom_accent\":\"#34D399\",\"corner_radius\":5,\"density\":\"SPACIOUS\"}",
-      "expected_theme": "system",
+      "expected_theme": "classic",
       "expected_accent": "#34d399",
       "expected_corner_radius": 6,
       "expected_density": "spacious"
