@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="graphite">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none';" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Настройки — AG Widgets</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="settings.css" />
+  <script src="src/renderer/theme-math.js" defer></script>
+  <script src="src/renderer/settings.js" defer></script>
+</head>
+<body>
+  <div class="settings-shell">
+    <header class="settings-header">
+      <h1 class="settings-title">Настройки</h1>
+      <p class="settings-subtitle">Внешний вид и поведение виджета</p>
+    </header>
+
+    <main class="settings-main">
+      <p id="bridge-notice" class="notice hidden" role="status">Настройки доступны только в приложении.</p>
+
+      <section class="panel" aria-labelledby="appearance-heading">
+        <h2 id="appearance-heading" class="panel-title">Внешний вид</h2>
+
+        <div class="theme-grid" role="group" aria-label="Тема оформления">
+          <button type="button" class="theme-option" data-theme-value="system" aria-pressed="false">
+            <span class="theme-swatch" aria-hidden="true">
+              <span class="swatch-card"></span>
+              <span class="swatch-accent"></span>
+            </span>
+            <span class="theme-label" title="Системная тема">Авто</span>
+          </button>
+          <button type="button" class="theme-option" data-theme-value="graphite" aria-pressed="false">
+            <span class="theme-swatch" aria-hidden="true">
+              <span class="swatch-card"></span>
+              <span class="swatch-accent"></span>
+            </span>
+            <span class="theme-label">Graphite</span>
+          </button>
+          <button type="button" class="theme-option" data-theme-value="paper" aria-pressed="false">
+            <span class="theme-swatch" aria-hidden="true">
+              <span class="swatch-card"></span>
+              <span class="swatch-accent"></span>
+            </span>
+            <span class="theme-label">Paper</span>
+          </button>
+          <button type="button" class="theme-option" data-theme-value="oled" aria-pressed="false">
+            <span class="theme-swatch" aria-hidden="true">
+              <span class="swatch-card"></span>
+              <span class="swatch-accent"></span>
+            </span>
+            <span class="theme-label">OLED</span>
+          </button>
+          <button type="button" class="theme-option" data-theme-value="glass" aria-pressed="false">
+            <span class="theme-swatch" aria-hidden="true">
+              <span class="swatch-card"></span>
+              <span class="swatch-accent"></span>
+            </span>
+            <span class="theme-label">Glass</span>
+          </button>
+          <button type="button" class="theme-option" data-theme-value="classic" aria-pressed="false">
+            <span class="theme-swatch" aria-hidden="true">
+              <span class="swatch-card"></span>
+              <span class="swatch-accent"></span>
+            </span>
+            <span class="theme-label">Classic</span>
+          </button>
+        </div>
+
+        <div id="classic-variant" class="variant-row hidden" aria-hidden="true">
+          <span id="classic-variant-label" class="field-label">Вариант Classic</span>
+          <div class="segmented" role="group" aria-labelledby="classic-variant-label">
+            <button type="button" class="segment" data-variant-value="dark" aria-pressed="false">Тёмная</button>
+            <button type="button" class="segment" data-variant-value="light" aria-pressed="false">Светлая</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="font-heading">
+        <div class="panel-head">
+          <h2 id="font-heading" class="panel-title">Масштаб шрифта</h2>
+          <div class="value-row">
+            <output id="font-scale-value" class="value-text" for="font-scale">100%</output>
+            <button id="font-scale-reset" class="icon-reset" type="button" title="Сбросить к 100%" aria-label="Сбросить масштаб к 100%">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M3 12a9 9 0 1 0 3.2-6.9"></path>
+                <path d="M3 4v5h5"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div class="range-row">
+          <input id="font-scale" class="range" type="range" min="85" max="140" step="5" value="100"
+            aria-labelledby="font-heading" aria-describedby="font-scale-value" aria-valuetext="100%" />
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="opacity-heading">
+        <div class="panel-head">
+          <h2 id="opacity-heading" class="panel-title">Прозрачность окна</h2>
+          <output id="opacity-value" class="value-text" for="opacity">100%</output>
+        </div>
+        <div class="range-row">
+          <input id="opacity" class="range" type="range" min="60" max="100" step="5" value="100"
+            aria-labelledby="opacity-heading" aria-describedby="opacity-value" aria-valuetext="100%" />
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="behavior-heading">
+        <h2 id="behavior-heading" class="panel-title">Поведение окна</h2>
+        <div class="switch-list">
+          <div class="switch-row">
+            <span id="always-on-top-label" class="field-label">Поверх всех окон</span>
+            <button id="always-on-top" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="always-on-top-label"></button>
+          </div>
+          <div class="switch-row">
+            <span id="open-at-login-label" class="field-label">Запускать при входе в Windows</span>
+            <button id="open-at-login" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="open-at-login-label"></button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="settings-footer">
+      <p class="footer-note">Изменения применяются сразу</p>
+      <button id="reset-appearance" class="reset-btn" type="button">Сбросить всё</button>
+      <p id="settings-error" class="settings-error hidden" role="alert"></p>
+    </footer>
+  </div>
+</body>
+</html>

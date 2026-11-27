@@ -4,6 +4,9 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.content.res.Configuration
 import dev.agwidgets.BuildConfig
+import dev.agwidgets.ui.theme.AgThemeMode
+import dev.agwidgets.ui.theme.normalizeThemeMode
+import dev.agwidgets.ui.theme.resolveAgTheme
 import org.json.JSONObject
 import java.time.Instant
 import java.time.OffsetDateTime
@@ -217,18 +220,19 @@ object StatusStore {
     }
 
     fun getThemeMode(context: Context): String =
-        prefs(context).getString(KEY_THEME_MODE, "system")?.lowercase() ?: "system"
+        normalizeThemeMode(prefs(context).getString(KEY_THEME_MODE, AgThemeMode.SYSTEM))
 
     fun setThemeMode(context: Context, mode: String) {
-        prefs(context).edit().putString(KEY_THEME_MODE, mode.lowercase()).apply()
+        // Store only canonical ids; legacy `dark`/`light` are migrated on write.
+        prefs(context).edit().putString(KEY_THEME_MODE, normalizeThemeMode(mode)).apply()
     }
 
-    fun isDarkTheme(context: Context): Boolean = when (getThemeMode(context)) {
-        "light" -> false
-        "dark" -> true
-        else -> (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+    fun isDarkTheme(context: Context): Boolean =
+        resolveAgTheme(getThemeMode(context), isSystemDark(context)).isDark
+
+    private fun isSystemDark(context: Context): Boolean =
+        (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
             Configuration.UI_MODE_NIGHT_YES
-    }
 
     fun saveError(context: Context, error: String) {
         prefs(context).edit().putString(KEY_LAST_ERROR, error).apply()

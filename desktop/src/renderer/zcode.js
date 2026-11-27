@@ -37,6 +37,30 @@
     return 'неизвестная ошибка';
   }
 
+  /** Classic keeps the author's wording; modern themes use sentence case. */
+  function isClassicTheme() {
+    const theme =
+      typeof document !== 'undefined' && document.documentElement && document.documentElement.dataset
+        ? document.documentElement.dataset.theme
+        : '';
+    return typeof theme === 'string' && theme.indexOf('classic') === 0;
+  }
+
+  /**
+   * Word for the card top line. A failed probe must not report "Подключён"
+   * next to "Ваучер не проверен" (D-12), while Classic keeps its 1:1 wording.
+   */
+  function connectionLabel(zcode, classic) {
+    if (!zcode) return 'Нет данных';
+    if (zcode.method === 'disabled') return 'Отключён';
+    if (zcode.method !== 'api') return 'Нет данных';
+    if (classic) return 'Подключён';
+    if (zcode.auth_ok === false) return 'Токен истёк';
+    if (zcode.network_error || zcode.error_kind === 'network') return 'Нет сети';
+    if (zcode.error_kind) return 'Не проверен';
+    return 'Подключён';
+  }
+
   /**
    * Tri-state coupon view per the PR #1 contract: "absent" is reported only
    * when the backend confirmed it, everything uncertain stays "unknown".
@@ -85,7 +109,9 @@
     return { hasBalance, hasTotal, percent, text };
   }
 
-  function render(status) {
+  function render(status, options = {}) {
+    const opts = options && typeof options === 'object' && !Array.isArray(options) ? options : {};
+    const showBalanceBar = opts.show_balance_bar !== false;
     const title = document.getElementById('zcode-title');
     const material = document.getElementById('zcode-material');
     const subtitle = document.getElementById('zcode-sub');
@@ -94,9 +120,30 @@
     const barFill = document.getElementById('zcode-bar-fill');
     const actions = document.getElementById('zcode-actions');
     const loginButton = document.getElementById('zcode-login');
+    const retryButton = document.getElementById('zcode-retry');
     const zcode = status && status.zcode;
+    const classic = isClassicTheme();
+    const planName =
+      zcode && zcode.method === 'api' && typeof zcode.plan_name === 'string'
+        ? zcode.plan_name.trim()
+        : '';
 
     const needsLogin = !zcode || zcode.method !== 'api' || zcode.auth_ok === false;
+    // A transport/API failure has no login to offer: the same slot carries a
+    // retry action instead, so the cause never hides behind the fold (S1-045).
+    const needsRetry = Boolean(
+      zcode && zcode.method === 'api' && zcode.auth_ok !== false && (zcode.network_error || zcode.error_kind),
+    );
+    function setRetryVisible(visible) {
+      if (retryButton) {
+        retryButton.classList.toggle('hidden', !visible);
+        retryButton.title = visible
+          ? `Проверить ZCode ещё раз: ${errorReason(zcode)}`
+          : 'Проверить ZCode ещё раз';
+      }
+      if (chip) chip.classList.toggle('hidden', visible);
+    }
+    setRetryVisible(false);
     const actionsVisible =
       loginState === 'pending' || loginState === 'error' || (loginState === 'idle' && needsLogin);
     if (actions) actions.classList.toggle('hidden', !actionsVisible);
@@ -104,29 +151,34 @@
       loginButton.disabled = loginState === 'success';
       loginButton.textContent =
         loginState === 'pending'
-          ? 'ОТМЕНИТЬ ВХОД'
+          ? 'Отменить вход'
           : loginState === 'error'
-            ? 'ПОВТОРИТЬ ВХОД'
-            : 'ВОЙТИ В Z.AI';
+            ? 'Повторить вход'
+            : 'Войти в Z.ai';
     }
 
     if (bar) bar.classList.add('hidden');
     if (barFill) barFill.style.width = '0%';
     if (subtitle) subtitle.title = '';
     if (title) {
-      title.textContent = zcode && zcode.method === 'api' && zcode.plan_name ? `ZCode · ${zcode.plan_name}` : 'ZCode';
+      title.textContent = planName ? `ZCode · ${planName}` : 'ZCode';
     }
     if (material) {
-      material.textContent = zcode ? (zcode.method === 'api' ? 'API' : zcode.method === 'disabled' ? 'OFF' : '—') : '—';
+      // Modern themes hide `#zcode-title` (the card heading already says
+      // "ZCode"), so the plan name has to ride along the status line or it is
+      // lost entirely (D-06).
+      const statusWord = connectionLabel(zcode, classic);
+      material.textContent = !classic && planName ? `${statusWord} · ${planName}` : statusWord;
     }
 
     if (loginState === 'pending') {
       if (subtitle) subtitle.textContent = 'Открыл браузер · завершите вход в Z.ai…';
       if (chip) {
         chip.className = 'zcode-chip chip-warn';
-        chip.textContent = 'ОЖИДАНИЕ';
+        chip.textContent = 'Ожидание';
       }
-      if (material) material.textContent = 'OAUTH';
+      if (material) material.textContent = 'Вход';
+      setRetryVisible(false);
       return;
     }
 
@@ -134,9 +186,10 @@
       if (subtitle) subtitle.textContent = `Не удалось войти: ${loginMessage}`;
       if (chip) {
         chip.className = 'zcode-chip chip-error';
-        chip.textContent = 'ОШИБКА';
+        chip.textContent = 'Ошибка';
       }
-      if (material) material.textContent = 'OAUTH';
+      if (material) material.textContent = 'Вход';
+      setRetryVisible(false);
       return;
     }
 
@@ -144,9 +197,10 @@
       if (subtitle) subtitle.textContent = loginMessage || 'Вход выполнен · обновляю баланс…';
       if (chip) {
         chip.className = 'zcode-chip chip-available';
-        chip.textContent = 'ВХОД OK';
+        chip.textContent = 'Вход выполнен';
       }
-      if (material) material.textContent = 'API';
+      if (material) material.textContent = 'Подключён';
+      setRetryVisible(false);
       return;
     }
 
@@ -154,8 +208,9 @@
       if (subtitle) subtitle.textContent = 'Ожидание проверки';
       if (chip) {
         chip.className = 'zcode-chip chip-idle';
-        chip.textContent = 'нет данных';
+        chip.textContent = 'Нет данных';
       }
+      setRetryVisible(false);
       return;
     }
 
@@ -163,8 +218,9 @@
       if (subtitle) subtitle.textContent = 'Не подключён · войдите в Z.ai';
       if (chip) {
         chip.className = 'zcode-chip chip-idle';
-        chip.textContent = 'не подключён';
+        chip.textContent = 'Не подключён';
       }
+      setRetryVisible(false);
       return;
     }
 
@@ -172,8 +228,9 @@
       if (subtitle) subtitle.textContent = 'Токен истёк · войдите снова';
       if (chip) {
         chip.className = 'zcode-chip chip-warn';
-        chip.textContent = 'нужен вход';
+        chip.textContent = 'Нужен вход';
       }
+      setRetryVisible(false);
       return;
     }
 
@@ -182,7 +239,7 @@
     const endsDate = formatEndDate(zcode.ends_at);
     const endsText = endsDate ? ` · до ${endsDate}` : '';
 
-    if (bar && barFill && balance.percent !== null) {
+    if (bar && barFill && showBalanceBar && balance.percent !== null) {
       bar.classList.remove('hidden');
       barFill.style.width = `${balance.percent}%`;
     }
@@ -193,7 +250,9 @@
     } else if (coupon.state === 'absent') {
       subtitleText = balance.text ? `${balance.text}${endsText}` : coupon.text;
     } else {
-      subtitleText = balance.text ? `${coupon.text} · ${balance.text}` : coupon.text;
+      // Short human status in the card; the technical reason stays in the
+      // tooltip instead of pushing the balance out of two lines (S1-046).
+      subtitleText = balance.text ? `Ваучер не проверен · ${balance.text}` : 'Ваучер не проверен';
     }
 
     if (subtitle) {
@@ -211,9 +270,10 @@
         coupon.state === 'visible'
           ? 'Ваучер доступен'
           : coupon.state === 'absent'
-            ? 'нет ваучера'
-            : 'проверка не удалась';
+            ? 'Нет ваучера'
+            : 'Проверка не удалась';
     }
+    setRetryVisible(needsRetry);
   }
 
   AGW.zcode = { render, setLogin, getLogin, describeCoupon, balanceInfo };

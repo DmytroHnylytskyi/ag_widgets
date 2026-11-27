@@ -59,6 +59,7 @@ const APP_DIR = appDir();
 const STATE_DIR = path.join(APP_DIR, 'state');
 const CONFIG_PATH = path.join(APP_DIR, 'config.json');
 const SECRETS_PATH = path.join(APP_DIR, 'secrets.json');
+const APPEARANCE_PATH = path.join(APP_DIR, 'appearance.json');
 const CONTEXT_PATH = path.join(STATE_DIR, 'context.json');
 const STATUS_PATH = path.join(STATE_DIR, 'status.json');
 const ANNOTATIONS_DIR = annotationsDir();
@@ -76,6 +77,7 @@ const paths = {
   STATE_DIR,
   CONFIG_PATH,
   SECRETS_PATH,
+  APPEARANCE_PATH,
   CONTEXT_PATH,
   STATUS_PATH,
   ANNOTATIONS_DIR,

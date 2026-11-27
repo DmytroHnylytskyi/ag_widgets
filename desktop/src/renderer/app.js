@@ -7,42 +7,143 @@
 (function (AGW) {
   const params = new URLSearchParams(location.search);
   const previewName = params.get('preview');
-  const THEME_KEY = 'agw-theme';
   const REFRESH_TITLE = 'Обновить данные (F5)';
+  const DARK_THEMES = new Set(['graphite', 'oled', 'glass-dark', 'classic-dark']);
+  const LOCAL_THEMES = new Set([
+    'graphite',
+    'paper',
+    'oled',
+    'glass-dark',
+    'glass-light',
+    'classic-dark',
+    'classic-light',
+  ]);
 
   let latestState = { context: null, status: null, activeChat: null, chatTitles: {} };
+  let appearanceSnapshot = null;
 
-  function normalizeTheme(value) {
-    return value === 'light' || value === 'dark' ? value : 'dark';
+  function isDarkEffectiveTheme(theme) {
+    return DARK_THEMES.has(theme);
   }
 
-  function applyTheme(theme, persist) {
+  /** `#rrggbb` only; anything else (shorthands, functions) becomes null. */
+  function normalizeHexAccent(value) {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    return /^#[0-9a-fA-F]{6}$/.test(trimmed) ? trimmed.toLowerCase() : null;
+  }
+
+  /**
+   * A custom accent is both a fill and a text colour, so the readability tokens
+   * (`--on-accent`, `--accent-ink`, `--accent-bar`) are derived from the accent
+   * luminance and the resolved card surface (S1-018). Without a custom accent
+   * the theme's own contract values stay in charge.
+   */
+  function applyAccentTokens(theme, accent) {
+    const root = document.documentElement;
+    const math = AGW.themeMath;
+    const tokens = accent && math ? math.resolveAccentTokens(accent, theme) : null;
+    if (!tokens) {
+      root.style.removeProperty('--on-accent');
+      root.style.removeProperty('--accent-ink');
+      root.style.removeProperty('--accent-bar');
+      return;
+    }
+    root.style.setProperty('--on-accent', tokens.onAccent);
+    root.style.setProperty('--accent-ink', tokens.accentInk);
+    root.style.setProperty('--accent-bar', tokens.accentBar);
+  }
+
+  /**
+   * Applies a settings snapshot `{ appearance, effectiveTheme, ... }` from the
+   * main process (or the preview bridge): resolved theme, font scale and the
+   * sun/moon icon state.
+   */
+  function applyAppearanceSnapshot(snapshot) {
+    if (!snapshot || typeof snapshot !== 'object') return;
+    const appearance = snapshot.appearance || {};
+    const theme =
+      typeof snapshot.effectiveTheme === 'string' && snapshot.effectiveTheme
+        ? snapshot.effectiveTheme
+        : 'graphite';
+    const scale = Number(appearance.font_scale);
+    const opacity = Number(appearance.opacity);
+    const customAccent = normalizeHexAccent(appearance.custom_accent);
+
+    appearanceSnapshot = {
+      appearance: {
+        schema_version: 1,
+        theme: typeof appearance.theme === 'string' ? appearance.theme : 'system',
+        classic_variant: appearance.classic_variant === 'light' ? 'light' : 'dark',
+        font_scale: Number.isFinite(scale) && scale > 0 ? scale : 1,
+        opacity: Number.isFinite(opacity) && opacity > 0 ? opacity : 1,
+        custom_accent: customAccent,
+      },
+      effectiveTheme: theme,
+      systemDark: snapshot.systemDark === true,
+      alwaysOnTop: snapshot.alwaysOnTop !== false,
+      openAtLogin: snapshot.openAtLogin === true,
+    };
+
     document.documentElement.dataset.theme = theme;
-    if (persist) {
-      try {
-        localStorage.setItem(THEME_KEY, theme);
-      } catch {
-        // Private mode or a restricted profile: keep the in-memory theme.
-      }
-    }
+    document.documentElement.style.setProperty(
+      '--font-scale',
+      String(appearanceSnapshot.appearance.font_scale),
+    );
+    document.documentElement.dataset.dark = isDarkEffectiveTheme(theme) ? 'true' : 'false';
+    applyAccentTokens(theme, customAccent);
   }
 
-  function storedTheme() {
-    try {
-      return localStorage.getItem(THEME_KEY);
-    } catch {
-      return null;
-    }
+  /** Local fallback for the browser preview when no settings bridge exists. */
+  function applyLocalTheme(theme) {
+    applyAppearanceSnapshot({
+      appearance: {
+        schema_version: 1,
+        theme: theme.indexOf('classic') === 0 ? 'classic' : theme,
+        classic_variant: theme.slice(-5) === 'light' ? 'light' : 'dark',
+        font_scale: 1,
+        opacity: 1,
+      },
+      effectiveTheme: theme,
+    });
   }
-
-  applyTheme(normalizeTheme(params.get('theme') || storedTheme()), false);
-
-  document.getElementById('theme-btn').addEventListener('click', () => {
-    const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
-    applyTheme(next, true);
-  });
 
   const bridge = window.agWidgets || (previewName ? AGW.preview.bridge(previewName) : null);
+
+  document.getElementById('theme-btn').addEventListener('click', async () => {
+    const effective =
+      (appearanceSnapshot && appearanceSnapshot.effectiveTheme) ||
+      document.documentElement.dataset.theme ||
+      'graphite';
+    const dark =
+      isDarkEffectiveTheme(effective) || document.documentElement.dataset.dark === 'true';
+    const currentTheme =
+      (appearanceSnapshot && appearanceSnapshot.appearance && appearanceSnapshot.appearance.theme) ||
+      null;
+
+    if (bridge && typeof bridge.updateSettings === 'function') {
+      try {
+        if (currentTheme === 'classic') {
+          await bridge.updateSettings({ classic_variant: dark ? 'light' : 'dark' });
+        } else {
+          await bridge.updateSettings({ theme: dark ? 'paper' : 'graphite' });
+        }
+        return;
+      } catch {
+        // Fall through to the local switch below.
+      }
+    }
+
+    if (currentTheme === 'classic') applyLocalTheme(dark ? 'classic-light' : 'classic-dark');
+    else applyLocalTheme(dark ? 'paper' : 'graphite');
+  });
+
+  const settingsButton = document.getElementById('settings-btn');
+  if (settingsButton) {
+    settingsButton.addEventListener('click', () => {
+      if (bridge && typeof bridge.openSettings === 'function') bridge.openSettings();
+    });
+  }
 
   document.getElementById('menu-btn').addEventListener('click', () => {
     if (bridge && typeof bridge.showMenu === 'function') bridge.showMenu();
@@ -193,6 +294,13 @@
 
   refreshButton.addEventListener('click', refreshNow);
 
+  // Actions inside the cards (the quota error retry) ask for a refresh
+  // through a DOM event so the view modules stay bridge-free.
+  document.addEventListener('agw:refresh', refreshNow);
+
+  const retryButton = document.getElementById('zcode-retry');
+  if (retryButton) retryButton.addEventListener('click', refreshNow);
+
   const loginButton = document.getElementById('zcode-login');
   let loginAttempt = 0;
   let loginTimer = null;
@@ -244,7 +352,7 @@
 
       AGW.zcode.setLogin(
         'success',
-        result.refreshed ? 'Вход выполнен · обновляю баланс…' : 'Токен сохранён · нажмите ⟳ для обновления',
+        result.refreshed ? 'Вход выполнен · обновляю баланс…' : 'Токен сохранён · нажмите «Обновить»',
       );
       AGW.zcode.render(latestState.status);
 
@@ -267,6 +375,41 @@
       refreshNow();
     }
   });
+
+  // Appearance first: the settings snapshot drives the resolved theme,
+  // --font-scale and the sun/moon icon, then we subscribe to live updates
+  // pushed by the main process (both windows react to the same channel).
+  function initAppearance() {
+    if (bridge && typeof bridge.getSettings === 'function') {
+      if (typeof bridge.onAppearanceUpdate === 'function') {
+        try {
+          bridge.onAppearanceUpdate(applyAppearanceSnapshot);
+        } catch {
+          // Ignore bridges without subscription support.
+        }
+      }
+      return bridge
+        .getSettings()
+        .then(applyAppearanceSnapshot)
+        .catch(() => {});
+    }
+
+    const initial = params.get('theme');
+    if (initial && LOCAL_THEMES.has(initial)) {
+      applyLocalTheme(initial);
+    } else {
+      // No bridge and no `?theme`: the markup's default theme is authoritative.
+      document.documentElement.dataset.dark = isDarkEffectiveTheme(
+        document.documentElement.dataset.theme,
+      )
+        ? 'true'
+        : 'false';
+      document.documentElement.style.setProperty('--font-scale', '1');
+    }
+    return Promise.resolve();
+  }
+
+  initAppearance();
 
   if (bridge) {
     bridge.onStateUpdate(render);

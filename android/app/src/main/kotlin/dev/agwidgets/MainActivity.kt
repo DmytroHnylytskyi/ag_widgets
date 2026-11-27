@@ -17,6 +17,8 @@ import dev.agwidgets.data.ZCodeStore
 import dev.agwidgets.notify.Notifier
 import dev.agwidgets.ui.AgWidgetsScreen
 import dev.agwidgets.ui.theme.AGWidgetsTheme
+import dev.agwidgets.ui.theme.normalizeThemeMode
+import dev.agwidgets.ui.theme.resolveAgTheme
 import dev.agwidgets.widget.LimitsWidget
 import dev.agwidgets.work.RefreshWorker
 
@@ -35,31 +37,26 @@ class MainActivity : ComponentActivity() {
             val appContext = applicationContext
             var themeMode by remember { mutableStateOf(StatusStore.getThemeMode(appContext)) }
             val systemDark = isSystemInDarkTheme()
-            val darkTheme = when (themeMode) {
-                "light" -> false
-                "dark" -> true
-                else -> systemDark
-            }
+            val resolved = resolveAgTheme(themeMode, systemDark)
 
-            LaunchedEffect(darkTheme) {
-                val barStyle = if (darkTheme) {
+            LaunchedEffect(themeMode, resolved.isDark) {
+                val barStyle = if (resolved.isDark) {
                     SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
                 } else {
                     SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
                 }
                 enableEdgeToEdge(statusBarStyle = barStyle, navigationBarStyle = barStyle)
             }
-            LaunchedEffect(darkTheme) {
+            LaunchedEffect(themeMode, resolved.isDark) {
                 LimitsWidget().updateAll(appContext)
             }
 
-            AGWidgetsTheme(darkTheme = darkTheme) {
+            AGWidgetsTheme(themeMode = themeMode, systemDark = systemDark) {
                 AgWidgetsScreen(
-                    darkTheme = darkTheme,
-                    onToggleTheme = {
-                        val next = if (darkTheme) "light" else "dark"
-                        StatusStore.setThemeMode(appContext, next)
-                        themeMode = next
+                    themeMode = themeMode,
+                    onSelectTheme = { mode ->
+                        StatusStore.setThemeMode(appContext, mode)
+                        themeMode = normalizeThemeMode(mode)
                     },
                 )
             }

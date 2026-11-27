@@ -6,6 +6,26 @@
  * `red` is the default scenario. Exposed as `window.AGW.preview`.
  */
 (function (AGW) {
+  const THEME_PRESETS = {
+    graphite: { theme: 'graphite', classic_variant: 'dark', effectiveTheme: 'graphite', systemDark: true },
+    paper: { theme: 'paper', classic_variant: 'dark', effectiveTheme: 'paper', systemDark: false },
+    oled: { theme: 'oled', classic_variant: 'dark', effectiveTheme: 'oled', systemDark: true },
+    'glass-dark': { theme: 'glass', classic_variant: 'dark', effectiveTheme: 'glass-dark', systemDark: true },
+    'glass-light': { theme: 'glass', classic_variant: 'light', effectiveTheme: 'glass-light', systemDark: false },
+    'classic-dark': { theme: 'classic', classic_variant: 'dark', effectiveTheme: 'classic-dark', systemDark: true },
+    'classic-light': { theme: 'classic', classic_variant: 'light', effectiveTheme: 'classic-light', systemDark: false },
+    // Legacy preview links (`?theme=dark|light`) keep the author's style.
+    dark: { theme: 'classic', classic_variant: 'dark', effectiveTheme: 'classic-dark', systemDark: true },
+    light: { theme: 'classic', classic_variant: 'light', effectiveTheme: 'classic-light', systemDark: false },
+  };
+  const APPEARANCE_THEMES = ['system', 'graphite', 'paper', 'oled', 'glass', 'classic'];
+
+  /** `?theme=` lookup; falls back to Classic Dark for old preview links. */
+  function themePreset(raw) {
+    const key = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
+    return THEME_PRESETS[key] || THEME_PRESETS['classic-dark'];
+  }
+
   function isoOffset(hours) {
     return new Date(Date.now() + hours * 3600 * 1000).toISOString();
   }
@@ -277,6 +297,90 @@
     if (state.context && !state.activeChat) {
       state.activeChat = { id: 'preview-main', title: 'Example Session · Orbit App' };
     }
+
+    const preset = themePreset(new URLSearchParams(location.search).get('theme'));
+    const appearance = {
+      schema_version: 1,
+      theme: preset.theme,
+      classic_variant: preset.classic_variant,
+      font_scale: 1,
+      opacity: 1,
+    };
+    const settings = {
+      systemDark: preset.systemDark,
+      alwaysOnTop: true,
+      openAtLogin: false,
+    };
+    const appearanceListeners = new Set();
+
+    function resolveEffective() {
+      if (appearance.theme === 'classic') {
+        return appearance.classic_variant === 'light' ? 'classic-light' : 'classic-dark';
+      }
+      if (appearance.theme === 'glass') {
+        return settings.systemDark ? 'glass-dark' : 'glass-light';
+      }
+      if (appearance.theme === 'graphite' || appearance.theme === 'paper' || appearance.theme === 'oled') {
+        return appearance.theme;
+      }
+      return settings.systemDark ? 'graphite' : 'paper';
+    }
+
+    function snapshot() {
+      return {
+        appearance: { ...appearance },
+        effectiveTheme: resolveEffective(),
+        systemDark: settings.systemDark,
+        alwaysOnTop: settings.alwaysOnTop,
+        openAtLogin: settings.openAtLogin,
+      };
+    }
+
+    function emit() {
+      const snap = snapshot();
+      appearanceListeners.forEach((cb) => {
+        try {
+          cb(snap);
+        } catch {
+          // One bad listener must not break the preview bridge.
+        }
+      });
+      return snap;
+    }
+
+    function clampStep(value, min, max) {
+      const num = Number(value);
+      if (!Number.isFinite(num)) return null;
+      return Math.min(max, Math.max(min, Math.round(num * 20) / 20));
+    }
+
+    function updateSettings(patch) {
+      const next = patch && typeof patch === 'object' ? patch : {};
+      if (typeof next.theme === 'string') {
+        const theme = next.theme.trim().toLowerCase();
+        if (APPEARANCE_THEMES.indexOf(theme) !== -1) appearance.theme = theme;
+      }
+      if (next.classic_variant === 'dark' || next.classic_variant === 'light') {
+        appearance.classic_variant = next.classic_variant;
+      }
+      const fontScale = clampStep(next.font_scale, 0.85, 1.4);
+      if (fontScale !== null) appearance.font_scale = fontScale;
+      const opacity = clampStep(next.opacity, 0.6, 1);
+      if (opacity !== null) appearance.opacity = opacity;
+      if (typeof next.alwaysOnTop === 'boolean') settings.alwaysOnTop = next.alwaysOnTop;
+      if (typeof next.openAtLogin === 'boolean') settings.openAtLogin = next.openAtLogin;
+      return Promise.resolve(emit());
+    }
+
+    function resetAppearance() {
+      appearance.schema_version = 1;
+      appearance.theme = 'system';
+      appearance.classic_variant = 'dark';
+      appearance.font_scale = 1;
+      appearance.opacity = 1;
+      return Promise.resolve(emit());
+    }
+
     return {
       getState: () => Promise.resolve(state),
       minimizeWindow: () => {},
@@ -290,6 +394,17 @@
       moveWindow: () => {},
       saveWindowPosition: async () => ({ ok: true }),
       onStateUpdate: () => () => {},
+      getSettings: () => Promise.resolve(snapshot()),
+      updateSettings,
+      resetAppearance,
+      openSettings: () => Promise.resolve({ ok: true }),
+      onAppearanceUpdate: (cb) => {
+        if (typeof cb !== 'function') return () => {};
+        appearanceListeners.add(cb);
+        return () => {
+          appearanceListeners.delete(cb);
+        };
+      },
     };
   }
 

@@ -88,12 +88,26 @@ function isZCodeConnected() {
   return Boolean(zcode && zcode.method === 'api' && zcode.auth_ok !== false);
 }
 
+function syncSettingsWindow() {
+  const api = windowApi();
+  if (!api || typeof api.pushAppearance !== 'function') return;
+  try {
+    const { buildSettingsSnapshot } = require('./ipc');
+    if (typeof buildSettingsSnapshot === 'function') {
+      api.pushAppearance(buildSettingsSnapshot());
+    }
+  } catch {
+    // Plain Node tests load tray.js without Electron.
+  }
+}
+
 function toggleAlwaysOnTop(checked) {
   const api = windowApi();
   if (api && typeof api.setAlwaysOnTop === 'function') api.setAlwaysOnTop(checked);
   // The tray owns its own Menu instance; rebuilding it keeps the checkboxes in
   // sync even when the toggle came from the popup context menu.
   refreshMenu();
+  syncSettingsWindow();
 }
 
 function toggleOpenAtLogin(checked) {
@@ -102,6 +116,7 @@ function toggleOpenAtLogin(checked) {
   if (!app || typeof app.setLoginItemSettings !== 'function') return;
   app.setLoginItemSettings({ openAtLogin: Boolean(checked), ...loginItemOptions() });
   refreshMenu();
+  syncSettingsWindow();
 }
 
 function logoutZCode() {
@@ -113,6 +128,12 @@ function logoutZCode() {
       refreshMenu();
     })
     .catch(() => {});
+}
+
+/** Open (or focus) the separate Settings window. */
+function openSettings() {
+  const api = windowApi();
+  if (api && typeof api.openSettingsWindow === 'function') api.openSettingsWindow();
 }
 
 function openConfigDir() {
@@ -188,6 +209,7 @@ function buildMenuTemplate({
         return handler(checked);
       },
     },
+    { label: 'Настройки…', click: pickHandler(handlers.openSettings, openSettings) },
     { type: 'separator' },
     { label: 'Открыть папку конфига', click: pickHandler(handlers.openConfigDir, openConfigDir) },
     { label: 'Открыть Z.ai', click: pickHandler(handlers.openZCodeWeb, openZCodeWeb) },
@@ -275,4 +297,10 @@ function showContextMenu() {
   if (menu) menu.popup({ window });
 }
 
-module.exports = { createTray, showContextMenu, refreshMenu, buildMenuTemplate };
+module.exports = {
+  createTray,
+  showContextMenu,
+  refreshMenu,
+  buildMenuTemplate,
+  loginItemOptions,
+};

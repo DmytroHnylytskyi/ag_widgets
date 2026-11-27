@@ -3,18 +3,19 @@ package dev.agwidgets.ui.components
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import dev.agwidgets.BuildConfig
+import androidx.compose.ui.text.style.TextOverflow
+import dev.agwidgets.ui.theme.AgDim
 import dev.agwidgets.ui.theme.AgTheme
+import dev.agwidgets.ui.theme.AgType
 
 @Composable
 internal fun ChannelCard(
@@ -25,55 +26,60 @@ internal fun ChannelCard(
     onSave: () -> Unit,
     onRefresh: () -> Unit,
 ) {
+    val colors = AgTheme.colors
     GlassCard {
         SectionHeader(
             serial = "02 / CHANNEL",
             title = "Antigravity",
-            chipText = if (topic.isBlank()) "НЕ НАСТРОЕН" else "NTFY",
-            chipColor = if (topic.isBlank()) AgTheme.colors.muted else AgTheme.colors.glow,
+            chipText = if (topic.isBlank()) "Не настроен" else "ntfy",
+            chipColor = if (topic.isBlank()) colors.muted else colors.glow,
         )
         Text(
-            text = if (BuildConfig.ZCODE_ENABLED) {
-                "Квоты 5h/неделя, контекст ПК и статус ZCode приходят с компьютера " +
-                    "через приватный ntfy-канал."
-            } else {
-                "Квоты 5h/неделя и контекст ПК приходят с компьютера через приватный ntfy-канал."
-            },
-            style = MaterialTheme.typography.bodySmall,
-            color = AgTheme.colors.muted,
+            text = "Квоты 5 ч и недели, контекст ПК и статус ZCode приходят с компьютера " +
+                "через приватный ntfy-канал.",
+            style = AgType.body,
+            color = colors.secondary,
         )
         OutlinedTextField(
             value = topic,
             onValueChange = onTopicChange,
             singleLine = true,
-            label = { Text("Тема ntfy") },
-            colors = glassFieldColors(AgTheme.colors.glow),
+            label = { Text("Тема ntfy", style = AgType.caption) },
+            textStyle = AgType.body,
+            shape = RoundedCornerShape(AgDim.ControlRadius),
+            colors = glassFieldColors(colors.glow),
             modifier = Modifier.fillMaxWidth(),
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            OutlinedButton(
-                onClick = onSave,
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(8.dp),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = AgTheme.colors.text),
-            ) {
-                Text("Сохранить")
-            }
-            Button(
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(AgDim.ControlGap),
+        ) {
+            // Field-local save is a quiet action; "Обновить" is tonal so the one
+            // filled primary on the screen stays "Войти в Z.ai".
+            AgGhostButton(text = "Сохранить", onClick = onSave)
+            FilledTonalButton(
                 onClick = onRefresh,
                 enabled = !isRefreshing,
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(8.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = AgTheme.colors.glow,
-                    contentColor = AgTheme.colors.onGlow,
+                shape = RoundedCornerShape(AgDim.ControlRadius),
+                modifier = Modifier.weight(1f).height(AgDim.MinTouch),
+                colors = ButtonDefaults.filledTonalButtonColors(
+                    containerColor = colors.glow.copy(alpha = 0.16f),
+                    contentColor = colors.accentInk,
                 ),
             ) {
-                Text(if (isRefreshing) "Обновляю…" else "Обновить")
+                Text(
+                    text = if (isRefreshing) "Обновляю…" else "Обновить",
+                    style = AgType.body,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
         if (statusMessage.isNotBlank()) {
-            Text(statusMessage, style = MaterialTheme.typography.bodySmall, color = AgTheme.colors.glow)
+            Text(
+                text = statusMessage,
+                style = AgType.body,
+                color = colors.secondary,
+            )
         }
     }
 }

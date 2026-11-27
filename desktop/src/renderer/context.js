@@ -15,6 +15,36 @@
     return value === 'green' || value === 'yellow' || value === 'red' ? value : null;
   }
 
+  /** Classic themes keep the author's markup; modern ones move slots around. */
+  function isClassicTheme() {
+    const theme =
+      typeof document !== 'undefined' && document.documentElement && document.documentElement.dataset
+        ? document.documentElement.dataset.theme
+        : '';
+    return typeof theme === 'string' && theme.indexOf('classic') === 0;
+  }
+
+  /**
+   * Classic shows the level badge next to the model name in `.meta-top` (the
+   * author's 1:1 layout), modern themes show it in the card topline. One node
+   * with one id is moved between the two slots, so no markup is duplicated
+   * (D-07).
+   */
+  function placeLevelBadge(badge) {
+    if (!badge) return;
+    const card = document.getElementById('context-card');
+    if (!card) return;
+    const classic = isClassicTheme();
+    const target = classic ? card.querySelector('.meta-top') : card.querySelector('.card-topline');
+    if (!target || badge.parentElement === target) return;
+    const material = document.getElementById('ctx-material');
+    if (!classic && material && material.parentElement === target) {
+      target.insertBefore(badge, material);
+      return;
+    }
+    target.appendChild(badge);
+  }
+
   function currentConversation(context, activeChat) {
     if (!context || !context.conversations) return null;
     const activeId = activeChat && activeChat.id;
@@ -247,40 +277,65 @@
     }
   }
 
-  /** Footer legend follows the backend thresholds, or shows a dash while the window is unknown. */
+  /** Legend follows the backend thresholds, or shows a dash while the window is unknown. */
   function renderLegend(info) {
-    const ok = document.getElementById('legend-ok');
-    const warn = document.getElementById('legend-warn');
-    const risk = document.getElementById('legend-risk');
-    if (!ok && !warn && !risk) return;
-
     const known = Boolean(info && info.known);
     const yellow = known ? Math.round(info.yellowPct) : null;
     const red = known ? Math.round(info.redPct) : null;
-    if (ok) ok.textContent = known ? `0–${yellow}%` : '—';
-    if (warn) warn.textContent = known ? `${yellow}–${red}%` : '—';
-    if (risk) risk.textContent = known ? `${red}%+` : '—';
+    const text = {
+      ok: known ? `0–${yellow}%` : '—',
+      warn: known ? `${yellow}–${red}%` : '—',
+      risk: known ? `${red}%+` : '—',
+    };
+
+    // The footer legend is the Classic home of the scale; modern themes render
+    // the same thresholds inside the Context card (S1-048).
+    ['ok', 'warn', 'risk'].forEach(function (key) {
+      const footer = document.getElementById(`legend-${key}`);
+      if (footer) footer.textContent = text[key];
+      const inCard = document.getElementById(`zone-legend-${key}`);
+      if (inCard) inCard.textContent = text[key];
+    });
+  }
+
+  /** Show/hide the whole health-zone block (track + legend). */
+  function setZoneVisible(visible) {
+    const zone = document.querySelector('.zone');
+    if (zone) zone.classList.toggle('hidden', !visible);
   }
 
   function renderEmpty(info) {
     const hasChat = Boolean(info.activeChat && info.activeChat.id);
     const chatTitle = info.activeChat && info.activeChat.title ? info.activeChat.title : '';
+    const card = document.getElementById('context-card');
+    if (card) card.classList.add('is-empty');
     document.getElementById('ctx-tokens').textContent = '—';
-    document.getElementById('ctx-token-sub').textContent = 'токенов';
-    document.getElementById('ctx-model').textContent = hasChat ? 'Ожидание ответа' : 'Ожидание диалога';
-    document.getElementById('ctx-workspace').textContent = hasChat ? 'Выбранный чат' : '—';
+    document.getElementById('ctx-token-sub').textContent = 'токены';
+    document.getElementById('ctx-model').textContent = hasChat
+      ? 'Ожидание ответа'
+      : 'Нет активной сессии';
+    const workspaceEl = document.getElementById('ctx-workspace');
+    const workspaceNameEmpty = document.getElementById('ctx-workspace-name');
+    const workspacePrefixEmpty = workspaceEl ? workspaceEl.querySelector('.ws-prefix') : null;
+    if (workspaceNameEmpty) workspaceNameEmpty.textContent = hasChat ? 'Выбранный чат' : '';
+    if (workspacePrefixEmpty) workspacePrefixEmpty.classList.add('hidden');
+    if (workspaceEl) workspaceEl.classList.toggle('hidden', !hasChat);
     const snippetEl = document.getElementById('ctx-snippet');
     snippetEl.textContent = hasChat
       ? 'Ответьте модели, чтобы увидеть контекст'
-      : 'Отправь запрос в Antigravity';
+      : 'Отправьте запрос в Antigravity — данные появятся здесь';
     snippetEl.classList.remove('hidden');
 
     const alert = document.getElementById('ctx-alert');
     alert.classList.add('hidden');
 
-    const pill = document.getElementById('ctx-level-pill');
-    pill.className = 'status-pill level-idle';
-    pill.textContent = '—';
+    // An empty scale, a 0 % marker and a lone "—" badge read as broken data, so
+    // the empty state keeps one message and one action (S1-044).
+    const badge = document.getElementById('ctx-level-badge');
+    placeLevelBadge(badge);
+    badge.className = 'status-badge level-idle';
+    badge.textContent = '—';
+    badge.classList.add('hidden');
 
     const ring = document.getElementById('ring-progress');
     ring.style.strokeDashoffset = CIRCUMFERENCE;
@@ -289,15 +344,15 @@
     document.getElementById('ring-satellite').style.opacity = '0';
 
     const material = document.getElementById('ctx-material');
-    material.textContent = hasChat ? (chatTitle || 'НОВЫЙ ЧАТ').toUpperCase() : 'НЕТ СЕССИИ';
+    material.textContent = hasChat ? chatTitle || 'Новый чат' : 'Нет сессии';
     material.title = chatTitle;
 
     const recent = document.getElementById('ctx-recent');
     recent.innerHTML = '';
     recent.classList.add('hidden');
 
-    renderZone(info);
     renderLegend(info);
+    setZoneVisible(false);
   }
 
   function renderRecent(info, chatTitles) {
@@ -338,16 +393,36 @@
 
   function render(context, status, activeChat, chatTitles = {}) {
     const info = contextInfo(context, status, activeChat);
+    const card = document.getElementById('context-card');
+    if (card) card.classList.remove('is-empty');
     if (!info.cur) {
       renderEmpty(info);
       return;
     }
 
     const { cur, window, tokens, pct, level } = info;
+    const classic = isClassicTheme();
     const material = document.getElementById('ctx-material');
     document.getElementById('ctx-tokens').textContent = formatTokens(tokens);
-    document.getElementById('ctx-token-sub').textContent =
-      window && typeof pct === 'number' ? `${Math.round(pct)}% из ${formatWindow(window)}` : 'окно не задано';
+    // "занято" (context pressure) vs "осталось" (quota balance): one meaning per
+    // widget, spelled out instead of a bare percentage (S1-047). Classic keeps
+    // the author's `72% из 512K`.
+    const tokenSub = document.getElementById('ctx-token-sub');
+    if (classic) {
+      tokenSub.textContent =
+        window && typeof pct === 'number'
+          ? `${Math.round(pct)}% из ${formatWindow(window)}`
+          : 'окно не задано';
+      tokenSub.title = '';
+    } else if (typeof pct === 'number') {
+      tokenSub.textContent = `${Math.round(pct)}% занято`;
+      // The modern ring cannot hold the window size next to the percentage, so
+      // `512K` stays available through the tooltip (D-07).
+      tokenSub.title = window ? `${Math.round(pct)}% из ${formatWindow(window)}` : '';
+    } else {
+      tokenSub.textContent = 'окно не задано';
+      tokenSub.title = '';
+    }
 
     const ring = document.getElementById('ring-progress');
     const satellite = document.getElementById('ring-satellite');
@@ -372,41 +447,55 @@
 
     const chatTitle = info.activeChat && info.activeChat.title;
     material.textContent = chatTitle
-      ? chatTitle.toUpperCase()
+      ? chatTitle
       : window
-        ? `${prettyModel(cur.model).toUpperCase()} · ${formatWindow(window)}`
-        : prettyModel(cur.model).toUpperCase();
+        ? `${prettyModel(cur.model)} · ${formatWindow(window)}`
+        : prettyModel(cur.model);
     material.title = chatTitle || '';
 
     const model = document.getElementById('ctx-model');
     model.textContent = prettyModel(cur.model);
     model.title = cur.model || '';
     const age = shortAge(cur.updated_at);
-    document.getElementById('ctx-workspace').textContent =
-      `${cur.workspace ? `Проект: ${cur.workspace}` : 'Без проекта'}${age ? ` · ${age}` : ''}`;
+    // Classic renders the freshness in the titlebar (`#updated-time`), so the
+    // project line must not repeat it (D-07). The `Проект:` prefix is its own
+    // span so a narrow window can drop it in CSS alone (D-12).
+    const workspaceEl = document.getElementById('ctx-workspace');
+    const workspaceName = document.getElementById('ctx-workspace-name');
+    const workspacePrefix = workspaceEl ? workspaceEl.querySelector('.ws-prefix') : null;
+    if (workspaceName) {
+      workspaceName.textContent = cur.workspace
+        ? `${cur.workspace}${!classic && age ? ` · ${age}` : ''}`
+        : 'Без проекта';
+    }
+    if (workspacePrefix) workspacePrefix.classList.toggle('hidden', !cur.workspace);
+    if (workspaceEl) workspaceEl.classList.remove('hidden');
     const snippetEl = document.getElementById('ctx-snippet');
     const snippet = formatSnippet(cur.snippet);
     snippetEl.textContent = snippet;
     snippetEl.classList.toggle('hidden', !snippet);
 
-    const pill = document.getElementById('ctx-level-pill');
-    pill.className = `status-pill level-${level === 'unknown' ? 'idle' : level}`;
-    pill.textContent =
-      level === 'red' ? 'РИСК' : level === 'yellow' ? 'ВНИМАНИЕ' : level === 'green' ? 'OK' : '—';
+    const badge = document.getElementById('ctx-level-badge');
+    placeLevelBadge(badge);
+    badge.className = `status-badge level-${level === 'unknown' ? 'idle' : level}`;
+    badge.textContent =
+      level === 'red' ? 'Риск' : level === 'yellow' ? 'Внимание' : level === 'green' ? 'Норма' : '—';
+    badge.classList.toggle('hidden', level === 'unknown');
 
     const alert = document.getElementById('ctx-alert');
     if (level === 'red') {
       alert.className = 'ctx-alert';
-      alert.textContent = 'Пора /compact · зона деградации';
+      alert.textContent = 'Пора /compact';
       alert.classList.remove('hidden');
     } else if (level === 'yellow') {
       alert.className = 'ctx-alert warn';
-      alert.textContent = 'Контекст растёт · возможна деградация';
+      alert.textContent = 'Контекст растёт';
       alert.classList.remove('hidden');
     } else {
       alert.classList.add('hidden');
     }
 
+    setZoneVisible(true);
     renderZone(info);
     renderLegend(info);
     renderRecent(info, chatTitles);

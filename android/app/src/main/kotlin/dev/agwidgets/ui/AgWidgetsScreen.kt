@@ -9,6 +9,7 @@ import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -17,10 +18,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -51,11 +55,15 @@ import dev.agwidgets.data.ZCodeStore
 import dev.agwidgets.notify.Notifier
 import dev.agwidgets.ui.components.AccessCard
 import dev.agwidgets.ui.components.ChannelCard
+import dev.agwidgets.ui.components.ContextCard
 import dev.agwidgets.ui.components.DiagnosticsCard
 import dev.agwidgets.ui.components.Header
 import dev.agwidgets.ui.components.HeroCard
 import dev.agwidgets.ui.components.SurfaceCard
+import dev.agwidgets.ui.components.ZCodeDashboardCard
+import dev.agwidgets.ui.theme.AgDim
 import dev.agwidgets.ui.theme.AgTheme
+import dev.agwidgets.ui.theme.AgType
 import dev.agwidgets.widget.LimitsWidget
 import dev.agwidgets.widget.LimitsWidgetReceiver
 import dev.agwidgets.work.RefreshWorker
@@ -155,9 +163,17 @@ internal object OAuthSessionHolder {
     }
 }
 
-/** App screen: configuration cards plus the live quota and context dashboard. */
+/**
+ * App screen: a clean dashboard (context → limits → ZCode) plus a separate
+ * settings surface opened from the header gear. Always rendered on top of the
+ * single [AgTheme] palette, so Classic keeps the author's decor 1:1.
+ *
+ * v1 invariants kept on purpose: the first-run mode choice, the `BuildConfig`
+ * gates for the ZCode flavor, `ZCodeStore` (never the merged status) as the
+ * token source and the 429 backoff.
+ */
 @Composable
-internal fun AgWidgetsScreen(darkTheme: Boolean, onToggleTheme: () -> Unit) {
+internal fun AgWidgetsScreen(themeMode: String, onSelectTheme: (String) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val colors = AgTheme.colors
@@ -167,17 +183,19 @@ internal fun AgWidgetsScreen(darkTheme: Boolean, onToggleTheme: () -> Unit) {
     var lastStatus by remember { mutableStateOf<AgStatus?>(StatusStore.getMergedStatus(context)) }
     var lastError by remember { mutableStateOf<String?>(StatusStore.getLastError(context)) }
     var statusMessage by remember { mutableStateOf(lastError ?: "") }
-    var zcodeMessage by remember {
-        mutableStateOf(if (zcodeToken.isNotBlank()) "Автономная проверка ZCode активна" else "Не подключено")
-    }
+    var zcodeMessage by remember { mutableStateOf("") }
     var isRefreshing by remember { mutableStateOf(false) }
     var nowMs by remember { mutableStateOf(System.currentTimeMillis()) }
     var showDiagnostics by remember { mutableStateOf(false) }
     var mode by remember { mutableStateOf(StatusStore.getMode(context)) }
     var notificationsDenied by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
 
     val oauthState by OAuthSessionHolder.state.collectAsState()
     val isOAuthPending = oauthState is OAuthUiState.Waiting
+
+    // System back returns from Settings to the dashboard before leaving the app.
+    BackHandler(enabled = showSettings) { showSettings = false }
 
     val notificationPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -307,8 +325,8 @@ internal fun AgWidgetsScreen(darkTheme: Boolean, onToggleTheme: () -> Unit) {
                         zcodeMessage = when {
                             zcode.isCouponUnknown -> when (zcode.errorKind) {
                                 "auth_expired" -> "Токен истёк — войдите снова"
-                                "network" -> "Нет связи с ZCode"
-                                "rate_limited" -> "ZCode временно ограничил запросы (429) — подождите несколько минут"
+                                "network" -> "Нет связи с zcode.z.ai"
+                                "rate_limited" -> "Слишком много запросов ZCode — попробуйте позже"
                                 "server_error" -> "Ошибка сервера ZCode"
                                 "api_changed" -> "Схема API ZCode изменилась"
                                 "parse_failed" -> "Не удалось разобрать ответ ZCode"
@@ -384,49 +402,75 @@ internal fun AgWidgetsScreen(darkTheme: Boolean, onToggleTheme: () -> Unit) {
         if (lastStatus == null && (canFetchPc || canFetchZCode)) refresh()
     }
 
+    // Dashboard and Settings keep their own offset: scrolling one used to move
+    // the other when going "Назад".
+    val dashboardScrollState = rememberScrollState()
+    val settingsScrollState = rememberScrollState()
+    val scrollState = if (showSettings) settingsScrollState else dashboardScrollState
+    // The pinned bar only becomes a scrim once content slides under it. At
+    // scroll == 0 it is fully transparent, so the Classic grid and the Glass
+    // wash reach the status bar instead of being cut by a hard seam.
+    val barAlpha = (scrollState.value / 48f).coerceIn(0f, 1f)
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(AgTheme.colors.background),
+            .background(colors.background),
     ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(colors.glowMagenta, Color.Transparent),
-                    center = Offset(size.width * 0.10f, size.height * 0.02f),
-                    radius = size.width * 0.72f,
-                ),
-                radius = size.width * 0.72f,
-                center = Offset(size.width * 0.10f, size.height * 0.02f),
-            )
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(colors.glowBlue, Color.Transparent),
-                    center = Offset(size.width * 0.96f, size.height * 0.72f),
-                    radius = size.width * 0.78f,
-                ),
-                radius = size.width * 0.78f,
-                center = Offset(size.width * 0.96f, size.height * 0.72f),
-            )
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(colors.glowOrange, Color.Transparent),
-                    center = Offset(size.width * 0.88f, size.height * 0.08f),
-                    radius = size.width * 0.42f,
-                ),
-                radius = size.width * 0.42f,
-                center = Offset(size.width * 0.88f, size.height * 0.08f),
-            )
-            val step = 22.dp.toPx()
-            var x = 0f
-            while (x < size.width) {
-                drawLine(colors.grid, Offset(x, 0f), Offset(x, size.height), 1f)
-                x += step
+        // Glass themes get a soft atmospheric wash; nothing else is tinted.
+        if (colors.isGlass) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(colors.backdropTint, Color.Transparent),
+                        startY = 0f,
+                        endY = size.height * 0.55f,
+                    ),
+                )
             }
-            var y = 0f
-            while (y < size.height) {
-                drawLine(colors.grid, Offset(0f, y), Offset(size.width, y), 1f)
-                y += step
+        }
+
+        // Neon glows and the grid are part of the author's Classic look only.
+        if (colors.isClassic) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(colors.glowMagenta, Color.Transparent),
+                        center = Offset(size.width * 0.10f, size.height * 0.02f),
+                        radius = size.width * 0.72f,
+                    ),
+                    radius = size.width * 0.72f,
+                    center = Offset(size.width * 0.10f, size.height * 0.02f),
+                )
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(colors.glowBlue, Color.Transparent),
+                        center = Offset(size.width * 0.96f, size.height * 0.72f),
+                        radius = size.width * 0.78f,
+                    ),
+                    radius = size.width * 0.78f,
+                    center = Offset(size.width * 0.96f, size.height * 0.72f),
+                )
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(colors.glowOrange, Color.Transparent),
+                        center = Offset(size.width * 0.88f, size.height * 0.08f),
+                        radius = size.width * 0.42f,
+                    ),
+                    radius = size.width * 0.42f,
+                    center = Offset(size.width * 0.88f, size.height * 0.08f),
+                )
+                val step = 22.dp.toPx()
+                var x = 0f
+                while (x < size.width) {
+                    drawLine(colors.grid, Offset(x, 0f), Offset(x, size.height), 1f)
+                    x += step
+                }
+                var y = 0f
+                while (y < size.height) {
+                    drawLine(colors.grid, Offset(0f, y), Offset(size.width, y), 1f)
+                    y += step
+                }
             }
         }
 
@@ -445,110 +489,154 @@ internal fun AgWidgetsScreen(darkTheme: Boolean, onToggleTheme: () -> Unit) {
                 },
             )
         } else {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .safeDrawingPadding()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 18.dp, vertical = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                Header(
-                    status = lastStatus,
-                    nowMs = nowMs,
-                    darkTheme = darkTheme,
-                    onToggleTheme = onToggleTheme,
+            Column(modifier = Modifier.fillMaxSize()) {
+                // Pinned top bar: the header never scrolls away and never gets
+                // cut in half by the status-bar inset.
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(colors.background.copy(alpha = barAlpha * 0.94f))
+                        .statusBarsPadding()
+                        .padding(horizontal = AgDim.Page, vertical = 12.dp),
+                ) {
+                    if (showSettings) {
+                        SettingsTopBar(onBack = { showSettings = false })
+                    } else {
+                        Header(
+                            status = lastStatus,
+                            nowMs = nowMs,
+                            isRefreshing = isRefreshing,
+                            onRefresh = { refresh() },
+                            onOpenSettings = { showSettings = true },
+                        )
+                    }
+                }
+                HorizontalDivider(
+                    thickness = 1.dp,
+                    color = colors.border.copy(alpha = colors.border.alpha * barAlpha),
                 )
-                if (notificationsDenied) {
-                    Text(
-                        text = "Уведомления отключены — напоминания о сбросе квоты не придут",
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 9.sp,
-                        letterSpacing = 0.4.sp,
-                        color = AgTheme.colors.amber,
-                        modifier = Modifier.padding(horizontal = 4.dp),
-                    )
-                }
-                if (mode != StatusStore.MODE_ZCODE) {
-                    HeroCard(
-                        status = lastStatus,
-                        nowMs = nowMs,
-                        isRefreshing = isRefreshing,
-                        onRefresh = { refresh() },
-                    )
-                    ChannelCard(
-                        topic = topic,
-                        onTopicChange = { topic = it },
-                        isRefreshing = isRefreshing,
-                        statusMessage = statusMessage,
-                        onSave = {
-                            val prevTopic = StatusStore.getTopic(context)
-                            val nextTopic = topic.trim()
-                            StatusStore.setTopic(context, nextTopic)
-                            // Alerts scheduled for the old topic are meaningless now.
-                            if (nextTopic.isEmpty() || nextTopic != prevTopic) {
-                                ResetAlertWorker.cancelAllResetAlerts(context)
-                            }
-                            syncPeriodicSchedule()
-                            lastStatus = StatusStore.getMergedStatus(context)
-                            lastError = StatusStore.getLastError(context)
-                            nowMs = System.currentTimeMillis()
-                            statusMessage = if (nextTopic.isEmpty()) "Тема очищена" else "Тема сохранена"
-                            scope.launch { runCatching { LimitsWidget().updateAll(context) } }
-                        },
-                        onRefresh = { refresh() },
-                    )
-                }
-                if (BuildConfig.ZCODE_ENABLED) {
-                    AccessCard(
-                        zcode = lastStatus?.zcode,
-                        token = zcodeToken,
-                        onTokenChange = { zcodeToken = it },
-                        isPending = isOAuthPending,
-                        message = zcodeMessage,
-                        onLogin = { login() },
-                        onCancelLogin = { OAuthSessionHolder.cancel() },
-                        onSaveToken = {
-                            ZCodeStore.setToken(context, zcodeToken)
-                            syncPeriodicSchedule()
-                            zcodeMessage = if (zcodeToken.isBlank()) "Токен пуст" else "Токен сохранён"
-                            lastStatus = StatusStore.getMergedStatus(context)
-                        },
-                        onClearToken = { logout() },
-                    )
-                }
-                if (mode != StatusStore.MODE_ZCODE) {
-                    SurfaceCard(onPinWidget = { pinWidget() })
-                }
-                DiagnosticsCard(
-                    rawJson = lastStatus?.rawJson,
-                    lastError = lastError,
-                    expanded = showDiagnostics,
-                    onToggle = { showDiagnostics = !showDiagnostics },
-                    onChangeMode = if (BuildConfig.ZCODE_ENABLED) {
-                        {
-                            StatusStore.setMode(context, StatusStore.MODE_UNSET)
-                            mode = StatusStore.MODE_UNSET
+
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .verticalScroll(scrollState)
+                        .navigationBarsPadding()
+                        .padding(horizontal = AgDim.Page)
+                        .padding(top = AgDim.CardGap, bottom = AgDim.Page),
+                    verticalArrangement = Arrangement.spacedBy(AgDim.CardGap),
+                ) {
+                    if (!showSettings) {
+                        if (notificationsDenied) {
+                            Text(
+                                text = "Уведомления отключены — напоминания о сбросе квоты не придут",
+                                style = if (colors.isClassic) {
+                                    AgType.caption.copy(fontFamily = FontFamily.Monospace)
+                                } else {
+                                    AgType.body
+                                },
+                                color = colors.amber,
+                            )
+                        }
+                        if (mode != StatusStore.MODE_ZCODE) {
+                            ContextCard(
+                                context = lastStatus?.contextSummary,
+                                updatedAt = lastStatus?.pcUpdatedAt ?: lastStatus?.updatedAt,
+                                nowMs = nowMs,
+                            )
+                            HeroCard(status = lastStatus, nowMs = nowMs)
+                        }
+                        if (BuildConfig.ZCODE_ENABLED) {
+                            ZCodeDashboardCard(
+                                zcode = lastStatus?.zcode,
+                                isPending = isOAuthPending,
+                                message = zcodeMessage,
+                                onLogin = { login() },
+                                onOpenSettings = { showSettings = true },
+                            )
                         }
                     } else {
-                        null
-                    },
-                )
-                Text(
-                    text = when {
-                        mode == StatusStore.MODE_ZCODE ->
-                            "AGW / 01 · ТОКЕН ZCODE ХРАНИТСЯ ТОЛЬКО НА ТЕЛЕФОНЕ"
-                        BuildConfig.ZCODE_ENABLED ->
+                        SettingsScreen(
+                            themeMode = themeMode,
+                            onSelectTheme = onSelectTheme,
+                        ) {
+                            if (mode != StatusStore.MODE_ZCODE) {
+                                ChannelCard(
+                                    topic = topic,
+                                    onTopicChange = { topic = it },
+                                    isRefreshing = isRefreshing,
+                                    statusMessage = statusMessage,
+                                    onSave = {
+                                        val prevTopic = StatusStore.getTopic(context)
+                                        val nextTopic = topic.trim()
+                                        StatusStore.setTopic(context, nextTopic)
+                                        // Alerts scheduled for the old topic are meaningless now.
+                                        if (nextTopic.isEmpty() || nextTopic != prevTopic) {
+                                            ResetAlertWorker.cancelAllResetAlerts(context)
+                                        }
+                                        syncPeriodicSchedule()
+                                        lastStatus = StatusStore.getMergedStatus(context)
+                                        lastError = StatusStore.getLastError(context)
+                                        nowMs = System.currentTimeMillis()
+                                        statusMessage = if (nextTopic.isEmpty()) "Тема очищена" else "Тема сохранена"
+                                        scope.launch { runCatching { LimitsWidget().updateAll(context) } }
+                                    },
+                                    onRefresh = { refresh() },
+                                )
+                            }
+                            if (BuildConfig.ZCODE_ENABLED) {
+                                AccessCard(
+                                    zcode = lastStatus?.zcode,
+                                    token = zcodeToken,
+                                    onTokenChange = { zcodeToken = it },
+                                    isPending = isOAuthPending,
+                                    message = zcodeMessage,
+                                    onLogin = { login() },
+                                    onCancelLogin = { OAuthSessionHolder.cancel() },
+                                    onSaveToken = {
+                                        ZCodeStore.setToken(context, zcodeToken)
+                                        syncPeriodicSchedule()
+                                        zcodeMessage = if (zcodeToken.isBlank()) "Токен пуст" else "Токен сохранён"
+                                        lastStatus = StatusStore.getMergedStatus(context)
+                                    },
+                                    onClearToken = { logout() },
+                                )
+                            }
+                            if (mode != StatusStore.MODE_ZCODE) {
+                                SurfaceCard(onPinWidget = { pinWidget() })
+                            }
+                            DiagnosticsCard(
+                                rawJson = lastStatus?.rawJson,
+                                lastError = lastError,
+                                expanded = showDiagnostics,
+                                onToggle = { showDiagnostics = !showDiagnostics },
+                                onChangeMode = if (BuildConfig.ZCODE_ENABLED) {
+                                    {
+                                        StatusStore.setMode(context, StatusStore.MODE_UNSET)
+                                        mode = StatusStore.MODE_UNSET
+                                        showSettings = false
+                                    }
+                                } else {
+                                    null
+                                },
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = if (colors.isClassic) {
                             "AGW / 01 · В NTFY УХОДЯТ ЧИСЛА КВОТ, ТОКЕНОВ, ID ДИАЛОГА И ФЛАГ ВАУЧЕРА"
-                        else ->
-                            "AGW / 01 · В NTFY УХОДЯТ ЧИСЛА КВОТ, ТОКЕНОВ И ID ДИАЛОГА"
-                    },
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 8.sp,
-                    letterSpacing = 0.8.sp,
-                    color = AgTheme.colors.muted.copy(alpha = 0.7f),
-                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
-                )
+                        } else {
+                            "В ntfy уходят числа квот, токенов, ID диалога и флаг ваучера"
+                        },
+                        style = if (colors.isClassic) {
+                            AgType.caption.copy(fontFamily = FontFamily.Monospace, letterSpacing = 0.8.sp, fontSize = 9.sp)
+                        } else {
+                            AgType.caption
+                        },
+                        color = if (colors.isClassic) colors.muted.copy(alpha = 0.7f) else colors.muted,
+                    )
+                }
             }
         }
     }

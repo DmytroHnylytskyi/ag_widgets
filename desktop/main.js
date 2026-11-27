@@ -1,11 +1,11 @@
 'use strict';
 
-const { app } = require('electron');
+const { app, nativeTheme } = require('electron');
 const { readAllState, startWatchers } = require('./src/main/storage');
 const { maybePublishActiveChat } = require('./src/main/collector');
 const { logError } = require('./src/main/logger');
 const zcodeAuth = require('./src/main/zcode-auth');
-const { registerIpc } = require('./src/main/ipc');
+const { registerIpc, buildSettingsSnapshot } = require('./src/main/ipc');
 const { createTray } = require('./src/main/tray');
 const windowApi = require('./src/main/window');
 
@@ -22,6 +22,16 @@ if (!gotLock) {
   app.quit();
 } else {
   app.on('second-instance', windowApi.showWindow);
+
+  // A Windows dark/light switch changes `system` and `glass`; re-apply the
+  // resolved theme to both windows and broadcast the fresh snapshot.
+  nativeTheme.on('updated', () => {
+    try {
+      windowApi.applyAppearanceToWindows(buildSettingsSnapshot());
+    } catch (error) {
+      logError('nativeTheme', error);
+    }
+  });
 
   app.on('before-quit', () => {
     if (shuttingDown) return;
@@ -44,9 +54,16 @@ if (!gotLock) {
     } catch (error) {
       logError('flushWindowState', error);
     }
+    try {
+      windowApi.closeSettingsWindow();
+    } catch (error) {
+      logError('closeSettingsWindow', error);
+    }
   });
 
-  // Closing the widget window quits the app; the tray menu keeps it alive.
+  // Closing the widget window quits the app (close-to-quit); the tray menu and
+  // the minimize button keep it alive. `closed` in `window.js` also tears down
+  // the Settings window, so this fires right after a real close.
   app.on('window-all-closed', () => app.quit());
 
   app.whenReady().then(() => {

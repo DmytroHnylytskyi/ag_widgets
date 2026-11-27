@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ru" data-theme="dark">
+<html lang="ru" data-theme="graphite" data-dark="true">
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none';" />
@@ -13,7 +13,7 @@
       <div class="brand">
         <img class="brand-mark" src="assets/icon-64.png" alt="" width="26" height="26" />
         <div class="brand-copy">
-          <span class="brand-name">AG WIDGETS</span>
+          <span class="brand-name">AG Widgets</span>
           <span class="brand-sub">ANTIGRAVITY · ZCODE</span>
         </div>
       </div>
@@ -21,23 +21,43 @@
         <span id="live-dot" class="live-dot" aria-hidden="true"></span>
         <span id="updated-time" class="muted-mini">—</span>
         <button id="refresh-btn" class="icon-btn refresh-btn" type="button" title="Обновить данные (F5)" aria-label="Обновить данные">
-          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
             <path d="M21 3v6h-6"></path>
           </svg>
         </button>
+        <button id="settings-btn" class="icon-btn settings-btn" type="button" title="Настройки" aria-label="Настройки">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
         <button id="theme-btn" class="icon-btn theme-btn" type="button" title="Сменить тему" aria-label="Сменить тему">
-          <svg class="icon-sun" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <svg class="icon-sun" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <circle cx="12" cy="12" r="4"></circle>
             <path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>
           </svg>
-          <svg class="icon-moon" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <svg class="icon-moon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
           </svg>
         </button>
-        <button id="menu-btn" class="icon-btn" type="button" title="Меню: свернуть, поверх окон, выход" aria-label="Меню">⋯</button>
-        <button id="min-btn" class="icon-btn" type="button" title="Свернуть в панель задач" aria-label="Свернуть в панель задач">−</button>
-        <button id="quit-btn" class="icon-btn quit" type="button" title="Закрыть AG Widgets" aria-label="Закрыть AG Widgets">×</button>
+        <button id="menu-btn" class="icon-btn" type="button" title="Меню: свернуть, поверх окон, выход" aria-label="Меню">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="5" cy="12" r="1.25"></circle>
+            <circle cx="12" cy="12" r="1.25"></circle>
+            <circle cx="19" cy="12" r="1.25"></circle>
+          </svg>
+        </button>
+        <button id="min-btn" class="icon-btn" type="button" title="Свернуть в панель задач" aria-label="Свернуть в панель задач">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M5 12h14"></path>
+          </svg>
+        </button>
+        <button id="quit-btn" class="icon-btn quit" type="button" title="Закрыть AG Widgets" aria-label="Закрыть AG Widgets">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M6 6l12 12M18 6L6 18"></path>
+          </svg>
+        </button>
       </div>
     </header>
 
@@ -46,7 +66,9 @@
       <section class="card context-card" id="context-card" aria-live="polite">
         <div class="card-topline">
           <span class="serial">01 / CONTEXT</span>
-          <span class="material" id="ctx-material">НЕТ СЕССИИ</span>
+          <span class="card-heading">Контекст</span>
+          <span id="ctx-level-badge" class="status-badge level-idle">—</span>
+          <span class="material" id="ctx-material">Нет сессии</span>
         </div>
 
         <div class="context-main">
@@ -69,16 +91,15 @@
             </svg>
             <div class="gauge-center">
               <span id="ctx-tokens" class="tokens-big">—</span>
-              <span id="ctx-token-sub" class="tokens-sub">ТОКЕНЫ</span>
+              <span id="ctx-token-sub" class="tokens-sub">токены</span>
             </div>
           </div>
 
           <div class="context-meta">
             <div class="meta-top">
               <span id="ctx-model" class="model-name">Ожидание диалога</span>
-              <span id="ctx-level-pill" class="status-pill level-idle">—</span>
             </div>
-            <div id="ctx-workspace" class="meta-ws">—</div>
+            <div id="ctx-workspace" class="meta-ws"><span class="ws-prefix">Проект: </span><span id="ctx-workspace-name">—</span></div>
             <div id="ctx-snippet" class="meta-snippet">Отправь запрос в Antigravity</div>
             <div id="ctx-alert" class="ctx-alert hidden">Пора /compact</div>
           </div>
@@ -92,6 +113,11 @@
             <span id="zone-warn-label">надёжно до —</span>
             <span id="zone-risk-label">риск после —</span>
           </div>
+          <div class="zone-zones" aria-hidden="true">
+            <span class="legend"><i class="legend-dot ok"></i><span id="zone-legend-ok">0–40%</span></span>
+            <span class="legend"><i class="legend-dot warn"></i><span id="zone-legend-warn">40–65%</span></span>
+            <span class="legend"><i class="legend-dot risk"></i><span id="zone-legend-risk">65%+</span></span>
+          </div>
         </div>
 
         <div id="ctx-recent" class="recent-list"></div>
@@ -101,6 +127,7 @@
       <section class="card quota-card" aria-live="polite">
         <div class="card-topline">
           <span class="serial">02 / LIMITS</span>
+          <span class="card-heading">Лимиты · остаток</span>
           <span id="quota-extra" class="quota-extra hidden"></span>
           <span id="plan-tier" class="tier-badge">—</span>
         </div>
@@ -114,7 +141,8 @@
       <section class="card zcode-card" id="zcode-card" aria-live="polite">
         <div class="card-topline">
           <span class="serial">03 / ACCESS</span>
-          <span class="material" id="zcode-material">OFF</span>
+          <span class="card-heading">ZCode</span>
+          <span class="material" id="zcode-material">Отключён</span>
         </div>
         <div class="zcode-row">
           <div class="zcode-info">
@@ -122,10 +150,17 @@
             <div id="zcode-sub" class="zcode-sub">Ожидание проверки</div>
             <div id="zcode-bar" class="zcode-bar hidden"><div id="zcode-bar-fill" class="zcode-bar-fill"></div></div>
           </div>
-          <div id="zcode-chip" class="zcode-chip chip-idle">нет данных</div>
+          <div id="zcode-chip" class="zcode-chip chip-idle">Нет данных</div>
+          <button id="zcode-retry" class="zcode-retry hidden" type="button" title="Проверить ZCode ещё раз">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
+              <path d="M21 3v6h-6"></path>
+            </svg>
+            Повторить
+          </button>
         </div>
         <div class="zcode-actions hidden" id="zcode-actions">
-          <button id="zcode-login" class="zcode-action" type="button">ВОЙТИ В Z.AI</button>
+          <button id="zcode-login" class="zcode-action" type="button">Войти в Z.ai</button>
         </div>
       </section>
     </div>
@@ -140,6 +175,7 @@
   </div>
 
   <script src="src/renderer/format.js"></script>
+  <script src="src/renderer/theme-math.js"></script>
   <script src="src/renderer/context.js"></script>
   <script src="src/renderer/quotas.js"></script>
   <script src="src/renderer/zcode.js"></script>
