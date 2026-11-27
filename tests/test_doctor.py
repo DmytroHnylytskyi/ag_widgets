@@ -19,6 +19,8 @@ from agwidgets import crypto, doctor, paths  # noqa: E402
 
 SECRET_TOKEN = "super-secret-jwt-value"
 SECRET_TOPIC = "agw-supersecrettopic"
+VALID_E2E_KEY = "_v_pkoZlcxxtao-UZzCDCP7_6ZKGZXMcbWqPlGcwgwg"
+CUSTOM_NTFY_SERVER = "https://relay.example.com/secret-path"
 EXPECTED_CHECKS = [
     "python_version",
     "agy_cli",
@@ -420,6 +422,41 @@ class SecretsStorageTests(DoctorTestCase):
         self.assertEqual(check["status"], "warn")
         self.assertIn("no ZCode token or ntfy topic", check["detail"])
 
+    def test_encrypted_e2e_key_is_reported_as_boolean_only(self):
+        self.write_secrets(
+            {"ntfy_e2e_key_enc": "dpapi:v1:QUJDRA==", "device_mid": "device-1"}
+        )
+        with mock.patch.object(
+            doctor.crypto, "unprotect_secret", return_value=VALID_E2E_KEY
+        ):
+            checks = self.run_checks()
+
+        detail = self.by_name(checks)["secrets_storage"]["detail"]
+        self.assertIn("e2e_configured=true", detail)
+
+        text = doctor.format_report(checks) + json.dumps(doctor.build_report(checks))
+        self.assertNotIn(VALID_E2E_KEY, text)
+        self.assertNotIn("agw://", text)
+        self.assertNotIn("dpapi:v1:", text)
+
+    def test_legacy_e2e_key_is_reported_as_boolean_only(self):
+        self.write_secrets({"ntfy_e2e_key": VALID_E2E_KEY})
+        checks = self.run_checks()
+
+        check = self.by_name(checks)["secrets_storage"]
+        self.assertIn("e2e_configured=true", check["detail"])
+        self.assertEqual(check["status"], "warn")
+        self.assertIn("plaintext, migration pending", check["detail"])
+
+        text = doctor.format_report(checks) + json.dumps(doctor.build_report(checks))
+        self.assertNotIn(VALID_E2E_KEY, text)
+        self.assertNotIn("agw://", text)
+
+    def test_absent_e2e_key_reports_false(self):
+        self.write_secrets({"zcode_token": SECRET_TOKEN})
+        check = self.by_name(self.run_checks())["secrets_storage"]
+        self.assertIn("e2e_configured=false", check["detail"])
+
 
 class NetworkCheckTests(DoctorTestCase):
     def test_offline_checks_do_not_probe(self):
@@ -448,6 +485,47 @@ class NetworkCheckTests(DoctorTestCase):
         with mock.patch.object(doctor, "_probe_ntfy_status", return_value=503):
             checks = self.run_checks(network=True)
         self.assertEqual(self.by_name(checks)["ntfy_reachability"]["status"], "fail")
+
+    def test_custom_server_host_and_path_are_never_printed(self):
+        self.write_json(self.app / "config.json", {"ntfy_server": CUSTOM_NTFY_SERVER})
+        with mock.patch.object(
+            doctor, "_probe_ntfy_status", return_value=200
+        ) as probe:
+            checks = self.run_checks(network=True)
+
+        probe.assert_called_once_with(CUSTOM_NTFY_SERVER)
+        check = self.by_name(checks)["ntfy_reachability"]
+        self.assertEqual(check["status"], "ok")
+        self.assertIn("HTTP 200", check["detail"])
+
+        text = doctor.format_report(checks) + json.dumps(doctor.build_report(checks))
+        self.assertNotIn("relay.example.com", text)
+        self.assertNotIn("secret-path", text)
+        self.assertNotIn(CUSTOM_NTFY_SERVER, text)
+
+    def test_disabled_ntfy_skips_the_probe(self):
+        self.write_json(self.app / "config.json", {"ntfy_enabled": False})
+        checks = self.run_checks(network=True)
+
+        check = self.by_name(checks)["ntfy_reachability"]
+        self.assertEqual(check["status"], "ok")
+        self.assertIn("PC-only", check["detail"])
+        self.probe_ntfy.assert_not_called()
+
+    def test_invalid_server_falls_back_to_default(self):
+        self.write_json(
+            self.app / "config.json", {"ntfy_server": "http://cleartext.example"}
+        )
+        with mock.patch.object(
+            doctor, "_probe_ntfy_status", return_value=200
+        ) as probe:
+            checks = self.run_checks(network=True)
+
+        probe.assert_called_once_with(doctor.e2e.DEFAULT_NTFY_URL)
+        self.assertEqual(doctor.e2e.DEFAULT_NTFY_URL, "https://ntfy.sh")
+        self.assertEqual(self.by_name(checks)["ntfy_reachability"]["status"], "ok")
+        text = doctor.format_report(checks) + json.dumps(doctor.build_report(checks))
+        self.assertNotIn("cleartext.example", text)
 
     def test_zcode_auth_expired_fails(self):
         self.write_secrets({"zcode_token": SECRET_TOKEN, "device_mid": "device-1"})
@@ -548,6 +626,33 @@ class ReportTests(unittest.TestCase):
         report = doctor.build_report([{"name": "x", "status": "weird", "detail": "?"}])
         self.assertFalse(report["ok"])
         self.assertEqual(report["checks"][0]["status"], "fail")
+
+
+class HintCoverageTests(unittest.TestCase):
+    """``_HINTS`` is the documented contract for every check name."""
+
+    EXPECTED = {
+        "python_version",
+        "agy_cli",
+        "annotations_dir",
+        "antigravity_hook",
+        "antigravity_sidecar",
+        "runtime_config",
+        "state_freshness",
+        "secrets_storage",
+        "ntfy_reachability",
+        "zcode_api",
+    }
+
+    def test_hints_cover_exactly_ten_checks(self):
+        self.assertEqual(set(doctor._HINTS), self.EXPECTED)
+        self.assertEqual(len(doctor._HINTS), 10)
+
+    def test_every_hint_is_a_non_empty_string(self):
+        for name, hint in doctor._HINTS.items():
+            with self.subTest(name=name):
+                self.assertIsInstance(hint, str)
+                self.assertTrue(hint.strip())
 
 
 class ReadOnlyTests(DoctorTestCase):

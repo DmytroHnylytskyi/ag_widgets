@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="settings.css" />
   <script src="src/renderer/theme-math.js" defer></script>
+  <script src="src/renderer/qr.js" defer></script>
   <script src="src/renderer/settings.js" defer></script>
 </head>
 <body>
@@ -18,6 +19,7 @@
       <div class="tabs" role="tablist" aria-label="Разделы настроек">
         <button id="tab-appearance" class="tab" role="tab" type="button" aria-selected="true" aria-controls="panel-appearance">Оформление</button>
         <button id="tab-builder" class="tab" role="tab" type="button" aria-selected="false" aria-controls="panel-builder">Конструктор</button>
+        <button id="tab-sync" class="tab" role="tab" type="button" aria-selected="false" aria-controls="panel-sync">Синхронизация</button>
       </div>
     </header>
 
@@ -300,6 +302,59 @@
           </div>
           <textarea id="import-json" class="json-area" rows="5" spellcheck="false" aria-label="JSON пресета" aria-describedby="json-status" placeholder='{"schema_version":1,"theme":"paper"}'></textarea>
           <p id="json-status" class="json-status" role="status"></p>
+        </section>
+      </section>
+
+      <section id="panel-sync" class="tabpanel hidden" role="tabpanel" aria-labelledby="tab-sync">
+        <section class="panel" aria-labelledby="sync-channel-heading">
+          <h2 id="sync-channel-heading" class="panel-title">Канал</h2>
+
+          <div class="sync-row">
+            <label class="field-label" for="sync-ntfy-toggle">Синхронизация с телефоном (ntfy)</label>
+            <input type="checkbox" id="sync-ntfy-toggle" class="switch" />
+          </div>
+
+          <div class="sync-field">
+            <label class="field-label" for="sync-server-input">Сервер ntfy</label>
+            <div class="sync-inline">
+              <input id="sync-server-input" class="text-input" type="url" inputmode="url" placeholder="https://ntfy.sh" spellcheck="false" autocomplete="off" />
+              <button id="sync-server-save" class="ghost-btn" type="button">Сохранить</button>
+            </div>
+            <p id="sync-server-error" class="field-error hidden" role="alert"></p>
+            <p class="panel-hint">Допускается только адрес, начинающийся с <code>https://</code>, без символов <code>@</code>, <code>?</code> и <code>#</code>.</p>
+          </div>
+        </section>
+
+        <section class="panel" aria-labelledby="sync-e2e-heading">
+          <h2 id="sync-e2e-heading" class="panel-title">Шифрование</h2>
+
+          <div class="sync-row">
+            <label class="field-label" for="sync-e2e-toggle">E2E-шифрование (AES-256-GCM)</label>
+            <input type="checkbox" id="sync-e2e-toggle" class="switch" />
+          </div>
+
+          <button id="sync-e2e-rotate" class="ghost-btn sync-rotate" type="button">Сменить ключ</button>
+          <p id="sync-e2e-hint" class="panel-hint">Ключ хранится на этом устройстве и передаётся телефону только через QR-код.</p>
+        </section>
+
+        <section class="panel" aria-labelledby="sync-qr-heading">
+          <h2 id="sync-qr-heading" class="panel-title">Подключить Android (QR-код)</h2>
+          <p class="panel-hint">Откройте AG Widgets на телефоне и отсканируйте код.</p>
+
+          <button id="sync-qr-reveal" class="ghost-btn" type="button">Показать QR-код</button>
+
+          <div id="sync-qr-wrap" class="qr-wrap hidden" hidden>
+            <div id="sync-qr-svg" class="qr-frame"></div>
+            <span id="sync-qr-badge" class="qr-badge">Без E2E</span>
+            <code id="sync-uri" class="mono"></code>
+            <div class="qr-actions">
+              <button id="sync-copy-uri" class="ghost-btn" type="button">Скопировать ссылку сопряжения</button>
+              <button id="sync-copy-topic" class="ghost-btn" type="button">Скопировать тему</button>
+              <button id="sync-qr-hide" class="ghost-btn" type="button">Скрыть QR-код</button>
+            </div>
+          </div>
+
+          <p id="sync-status" class="notice hidden" role="status"></p>
         </section>
       </section>
     </main>

@@ -240,6 +240,9 @@ def run_once(
         state_dir = paths.state_dir()
         topic = paths.ensure_ntfy_topic()
         config = paths.load_config()
+        ntfy_enabled = paths.is_ntfy_enabled(config)
+        server_url = paths.get_ntfy_server(config)
+        e2e_key = paths.get_e2e_key()
         now = datetime.now(timezone.utc).astimezone()
         status = build_status(state_dir, config, now, force_refresh=force_publish)
     except (paths.ConfigReadError, crypto.SecretDecryptError) as exc:
@@ -260,6 +263,17 @@ def run_once(
     else:
         elapsed = max(0.0, now_ts - last_published_ts)
     changed = has_meaningful_change(_as_dict(last_payload) or None, status)
+    e2e_enabled = e2e_key is not None
+    # Enabling/disabling E2E or switching servers changes the channel contract:
+    # publish a fresh package immediately instead of waiting out the throttle.
+    channel_changed = False
+    # Compare against the implicit default so the very first enable on an
+    # existing install publishes immediately instead of waiting for a heartbeat.
+    if bool(publish_state.get("e2e_enabled", False)) != e2e_enabled:
+        channel_changed = True
+    previous_server = publish_state.get("server")
+    if isinstance(previous_server, str) and previous_server and previous_server != server_url:
+        channel_changed = True
     previous_context = _as_dict(_as_dict(last_payload).get("context_summary"))
     current_context = _as_dict(status.get("context_summary"))
     active_changed = previous_context.get("conversation_id") != current_context.get("conversation_id")
@@ -267,13 +281,16 @@ def run_once(
     should_publish = (
         force_publish
         or last_published_ts == 0.0
+        or channel_changed
         or (active_changed and elapsed >= MIN_ACTIVE_SWITCH_INTERVAL_SEC)
         or elapsed >= HEARTBEAT_INTERVAL_SEC
         or (changed and elapsed >= MIN_PUBLISH_INTERVAL_SEC)
     )
 
     publish_info: dict[str, Any] = {"published": False, "reason": "throttled_or_unchanged"}
-    if dry_run:
+    if not ntfy_enabled:
+        publish_info = {"published": False, "reason": "disabled"}
+    elif dry_run:
         publish_info = {
             "published": False,
             "reason": "dry_run",
@@ -281,7 +298,12 @@ def run_once(
             "changed": changed,
         }
     elif should_publish:
-        ok, detail = ntfy.publish(topic, status)
+        ok, detail = ntfy.publish(
+            topic,
+            status,
+            server_url=server_url,
+            e2e_key=e2e_key,
+        )
         publish_info = {"published": ok, "detail": detail, "changed": changed}
         if ok:
             paths.write_json(
@@ -290,6 +312,8 @@ def run_once(
                     "last_published_ts": now_ts,
                     "last_published_at": status["updated_at"],
                     "last_payload": status,
+                    "e2e_enabled": e2e_enabled,
+                    "server": server_url,
                 },
             )
 

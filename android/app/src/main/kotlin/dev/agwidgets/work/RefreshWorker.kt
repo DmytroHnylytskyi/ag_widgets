@@ -106,7 +106,12 @@ private suspend fun refreshNtfy(context: Context, timeoutMs: Int): Boolean {
     val topic = if (mode == StatusStore.MODE_ZCODE) "" else StatusStore.getTopic(context)
     if (topic.isBlank()) return false
 
-    val res = NtfyClient.fetchLatestMessage(topic, timeoutMs)
+    val res = NtfyClient.fetchLatestMessage(
+        topic,
+        timeoutMs,
+        StatusStore.getNtfyServer(context),
+        StatusStore.getE2eKey(context),
+    )
     return res.fold(
         onSuccess = { jsonText ->
             val parsed = AgStatus.fromJson(jsonText)

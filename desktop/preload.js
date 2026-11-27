@@ -32,6 +32,12 @@ contextBridge.exposeInMainWorld('agWidgets', {
   exportAppearance: () => ipcRenderer.invoke('agw:export-appearance'),
   /** Validate and persist a pasted appearance JSON; resolves to the snapshot. */
   importAppearance: (json) => ipcRenderer.invoke('agw:import-appearance', json),
+  /** Copy a short UTF-8 string via Electron's main-process clipboard. */
+  copyText: (text) => ipcRenderer.invoke('agw:copy-text', text),
+  /** Pairing state for the Sync tab: topic, server, ntfy/e2e flags, agw://pair URI. */
+  getPairing: () => ipcRenderer.invoke('agw:pairing-get'),
+  /** Apply `{ ntfy_enabled?, ntfy_server?, e2e_action? }`; resolves to the fresh snapshot. */
+  updatePairing: (patch) => ipcRenderer.invoke('agw:pairing-update', patch),
   onStateUpdate: (cb) => {
     const handler = (_event, payload) => cb(payload);
     ipcRenderer.on('agw:state', handler);

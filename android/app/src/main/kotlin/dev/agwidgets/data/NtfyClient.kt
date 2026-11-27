@@ -13,17 +13,35 @@ object NtfyClient {
     private val TOPIC_PATTERN = Regex("^[A-Za-z0-9_-]{1,64}$")
     private const val STATUS_TITLE = "ag-widgets-status"
 
+    private const val ERR_NO_MESSAGES = "В теме пока нет сообщений"
+    private const val ERR_NO_STATUS = "Нет сообщений статуса в теме ntfy"
+    private const val ERR_ENCRYPTED_NO_KEY = "Сообщение зашифровано — отсканируйте QR-код с ПК"
+    private const val ERR_WRONG_E2E_KEY = "Неверный E2E-ключ — отсканируйте новый QR с ПК"
+    private const val ERR_BAD_JSON = "Неверный JSON в сообщении ntfy"
+    private const val ERR_EXPECTED_E2E = "Ожидалось зашифрованное сообщение (E2E)"
+
+    /**
+     * Polls the newest status message of [topic].
+     *
+     * The defaults keep pre-E2E callers working (`ntfy.sh`, plaintext). When an
+     * [e2eKey] is configured, a plaintext payload is rejected on purpose so a
+     * network attacker cannot strip the encryption (anti-downgrade).
+     */
     suspend fun fetchLatestMessage(
         topic: String,
         timeoutMs: Int = 15_000,
+        serverUrl: String = E2eCrypto.DEFAULT_NTFY_SERVER,
+        e2eKey: String? = null,
     ): Result<String> = withContext(Dispatchers.IO) {
         val clean = topic.trim()
         if (clean.isEmpty() || !clean.matches(TOPIC_PATTERN)) {
             return@withContext Result.failure(IllegalArgumentException("Invalid ntfy topic"))
         }
+        val base = E2eCrypto.normalizeNtfyServer(serverUrl)
+            ?: return@withContext Result.failure(IllegalArgumentException("Invalid ntfy server"))
         var conn: HttpURLConnection? = null
         try {
-            val url = URL("https://ntfy.sh/" + URLEncoder.encode(clean, "UTF-8") + "/json?poll=1&since=latest")
+            val url = URL("$base/" + URLEncoder.encode(clean, "UTF-8") + "/json?poll=1&since=latest")
             conn = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
                 connectTimeout = timeoutMs
@@ -38,13 +56,9 @@ object NtfyClient {
                 reader.readLines().map { it.trim() }.filter { it.isNotEmpty() }
             }
             if (lines.isEmpty()) {
-                return@withContext Result.failure(IllegalStateException("В теме пока нет сообщений"))
+                return@withContext Result.failure(IllegalStateException(ERR_NO_MESSAGES))
             }
-            // Pick the newest status message, skipping unrelated or malformed events.
-            val payload = extractLatestStatusPayload(lines)
-                ?: return@withContext Result.failure(IllegalStateException("Нет сообщений статуса в теме ntfy"))
-
-            Result.success(payload)
+            extractLatestStatusPayload(lines, e2eKey)
         } catch (e: Exception) {
             Result.failure(e)
         } finally {
@@ -52,29 +66,70 @@ object NtfyClient {
         }
     }
 
-    /** Picks the newest valid status payload from an ntfy NDJSON response. */
-    internal fun extractLatestStatusPayload(lines: List<String>): String? {
-        val messageLine = lines.asReversed().firstOrNull { isStatusMessage(it) } ?: return null
-        return runCatching { JSONObject(messageLine).optString("message", "") }
-            .getOrNull()
-            ?.takeIf { it.isNotEmpty() }
+    /**
+     * Legacy (pre-E2E) payload picker: the newest valid [AgStatus] JSON as a
+     * plain string. Behavior is frozen for existing callers and tests.
+     */
+    internal fun extractLatestStatusPayload(lines: List<String>): String? =
+        extractLegacyStatusPayload(lines)
+
+    private fun extractLegacyStatusPayload(lines: List<String>): String? =
+        lines.asReversed().firstNotNullOfOrNull { line ->
+            messagePayloadOrNull(line)?.takeIf { AgStatus.fromJson(it) != null }
+        }
+
+    /**
+     * E2E-aware payload picker.
+     *
+     * The newest ntfy `message` event with a status-shaped title wins; then the
+     * payload is either decrypted (envelope + key) or accepted as plaintext
+     * (no key configured). An envelope without a key and plaintext with a key
+     * are both failures.
+     */
+    internal fun extractLatestStatusPayload(lines: List<String>, e2eKey: String?): Result<String> {
+        // Pick the newest status-shaped message (either an E2E envelope or a
+        // plaintext AgStatus), skipping unrelated/malformed events on the topic.
+        val payload = lines.asReversed().firstNotNullOfOrNull { line ->
+            messagePayloadOrNull(line)?.takeIf { candidate ->
+                E2eCrypto.isEncryptedEnvelope(candidate) || AgStatus.fromJson(candidate) != null
+            }
+        } ?: return Result.failure(IllegalStateException(ERR_NO_STATUS))
+
+        if (E2eCrypto.isEncryptedEnvelope(payload)) {
+            if (e2eKey == null) {
+                return Result.failure(IllegalStateException(ERR_ENCRYPTED_NO_KEY))
+            }
+            val plaintext = E2eCrypto.decryptEnvelope(payload, e2eKey).getOrElse {
+                return Result.failure(IllegalStateException(ERR_WRONG_E2E_KEY))
+            }
+            if (AgStatus.fromJson(plaintext) == null) {
+                return Result.failure(IllegalStateException(ERR_BAD_JSON))
+            }
+            return Result.success(plaintext)
+        }
+
+        if (e2eKey != null) {
+            // Anti-downgrade: with a key configured only authenticated envelopes
+            // are trusted, otherwise anyone could publish forged quotas.
+            return Result.failure(IllegalStateException(ERR_EXPECTED_E2E))
+        }
+        return Result.success(payload)
     }
 
     /**
-     * A usable ntfy event is a `message` event with a payload that parses as
-     * [AgStatus]. When a title is present it must be the app's status title.
+     * Payload of a usable ntfy event: a `message` event with a non-empty
+     * message whose optional title is the app's status title.
      */
-    private fun isStatusMessage(line: String): Boolean {
-        return try {
-            val obj = JSONObject(line)
-            if (obj.optString("event") != "message") return false
-            if (!obj.has("message")) return false
+    private fun messagePayloadOrNull(line: String): String? = try {
+        val obj = JSONObject(line)
+        if (obj.optString("event") != "message" || !obj.has("message")) {
+            null
+        } else {
             val title = obj.optString("title", "").trim()
-            if (title.isNotEmpty() && title != STATUS_TITLE) return false
             val payload = obj.optString("message", "")
-            AgStatus.fromJson(payload) != null
-        } catch (_: Exception) {
-            false
+            if (title.isNotEmpty() && title != STATUS_TITLE) null else payload.takeIf { it.isNotEmpty() }
         }
+    } catch (_: Exception) {
+        null
     }
 }

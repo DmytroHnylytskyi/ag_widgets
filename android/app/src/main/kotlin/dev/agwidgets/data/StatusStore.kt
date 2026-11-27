@@ -22,6 +22,8 @@ object StatusStore {
     private const val PREFS_NAME = "agw"
     private const val KEY_TOPIC = "ntfy_topic"
     private const val KEY_TOPIC_CLEARED = "ntfy_topic_cleared"
+    private const val KEY_NTFY_SERVER = "ntfy_server"
+    private const val KEY_NTFY_E2E_KEY = "ntfy_e2e_key"
     private const val KEY_LAST_JSON = "last_json"
     private const val KEY_LAST_ERROR = "last_error"
     private const val KEY_NOTIFIED_RESETS = "notified_resets"
@@ -31,6 +33,8 @@ object StatusStore {
 
     private const val MAX_NOTIFIED_RESETS = 30
     private const val RESET_ENTRY_SEPARATOR = "\n"
+
+    private val TOPIC_PATTERN = Regex("^[A-Za-z0-9_-]{1,64}$")
 
     const val MODE_UNSET = "unset"
     const val MODE_PC = "pc"
@@ -64,6 +68,125 @@ object StatusStore {
         BuildConfig.AGW_TOPIC
     }
 
+    // ------------------------------------------------------------------
+    // ntfy server + optional E2E key (set by the agw://pair QR code)
+    // ------------------------------------------------------------------
+
+    /** Stored ntfy endpoint, always a normalized HTTPS URL. */
+    fun getNtfyServer(context: Context): String = getNtfyServer(prefs(context))
+
+    internal fun getNtfyServer(preferences: SharedPreferences): String {
+        val stored = runCatching { preferences.getString(KEY_NTFY_SERVER, null) }.getOrNull()
+        return E2eCrypto.normalizeNtfyServer(stored) ?: E2eCrypto.DEFAULT_NTFY_SERVER
+    }
+
+    /** @return `false` when [serverUrl] is not a safe HTTPS endpoint (nothing is written). */
+    fun setNtfyServer(context: Context, serverUrl: String): Boolean = synchronized(lock) {
+        setNtfyServer(prefs(context), serverUrl)
+    }
+
+    internal fun setNtfyServer(preferences: SharedPreferences, serverUrl: String): Boolean {
+        val normalized = E2eCrypto.normalizeNtfyServer(serverUrl) ?: return false
+        preferences.edit().putString(KEY_NTFY_SERVER, normalized).apply()
+        return true
+    }
+
+    /** Shared E2E key, or `null` when absent, corrupt or decryptable-but-invalid. */
+    fun getE2eKey(context: Context): String? = getE2eKey(prefs(context), cipher)
+
+    internal fun getE2eKey(preferences: SharedPreferences, secretCipher: SecretCipher): String? =
+        runCatching {
+            val stored = preferences.getString(KEY_NTFY_E2E_KEY, null) ?: return@runCatching null
+            val plaintext = secretCipher.decrypt(stored) ?: return@runCatching null
+            plaintext.trim().takeIf { E2eCrypto.isValidKey(it) }
+        }.getOrNull()
+
+    fun hasE2eKey(context: Context): Boolean = getE2eKey(context) != null
+
+    /**
+     * Stores (or clears, with `null`) the shared E2E key.
+     *
+     * @return `false` when a non-null key is not a valid 43-char base64url key.
+     */
+    fun setE2eKey(context: Context, keyB64: String?): Boolean = synchronized(lock) {
+        setE2eKey(prefs(context), keyB64, cipher)
+    }
+
+    internal fun setE2eKey(
+        preferences: SharedPreferences,
+        keyB64: String?,
+        secretCipher: SecretCipher,
+    ): Boolean {
+        if (keyB64 == null) {
+            preferences.edit().remove(KEY_NTFY_E2E_KEY).apply()
+            return true
+        }
+        val trimmed = keyB64.trim()
+        if (!E2eCrypto.isValidKey(trimmed)) return false
+        preferences.edit().putString(KEY_NTFY_E2E_KEY, secretCipher.encrypt(trimmed)).apply()
+        return true
+    }
+
+    /**
+     * Applies a scanned [PairingConfig] in a single commit: topic, server, E2E
+     * key and the PC mode switch. The PC cache is dropped whenever the channel
+     * (topic, server or key) actually changed.
+     *
+     * @return `false` (and no writes) when any field is invalid.
+     */
+    fun applyPairing(context: Context, pairing: PairingConfig): Boolean = synchronized(lock) {
+        applyPairing(prefs(context), pairing, cipher)
+    }
+
+    internal fun applyPairing(
+        preferences: SharedPreferences,
+        pairing: PairingConfig,
+        secretCipher: SecretCipher,
+    ): Boolean {
+        val normalizedServer = E2eCrypto.normalizeNtfyServer(pairing.server) ?: return false
+        val topic = pairing.topic.trim()
+        if (!TOPIC_PATTERN.matches(topic)) return false
+        val key = pairing.e2eKey?.trim()
+        if (key != null && !E2eCrypto.isValidKey(key)) return false
+
+        val storedTopic = preferences.getString(KEY_TOPIC, null)
+        val previousTopic = when {
+            storedTopic != null -> secretCipher.decrypt(storedTopic)?.trim().orEmpty()
+            preferences.getBoolean(KEY_TOPIC_CLEARED, false) -> ""
+            else -> BuildConfig.AGW_TOPIC.trim()
+        }
+        val previousServer = E2eCrypto.normalizeNtfyServer(
+            preferences.getString(KEY_NTFY_SERVER, null),
+        ) ?: E2eCrypto.DEFAULT_NTFY_SERVER
+        val previousKey = preferences.getString(KEY_NTFY_E2E_KEY, null)
+            ?.let { secretCipher.decrypt(it) }
+            ?.trim()
+            ?.takeIf { E2eCrypto.isValidKey(it) }
+
+        val channelChanged = topic != previousTopic ||
+            normalizedServer != previousServer ||
+            key != previousKey
+
+        val editor = preferences.edit()
+            .putString(KEY_TOPIC, secretCipher.encrypt(topic))
+            .putBoolean(KEY_TOPIC_CLEARED, false)
+            .putString(KEY_NTFY_SERVER, normalizedServer)
+            // Pairing means a PC is present: skip onboarding and enable PC mode.
+            .putString(KEY_MODE, MODE_PC)
+        if (key == null) {
+            editor.remove(KEY_NTFY_E2E_KEY)
+        } else {
+            editor.putString(KEY_NTFY_E2E_KEY, secretCipher.encrypt(key))
+        }
+        if (channelChanged) {
+            editor.remove(KEY_LAST_JSON)
+                .remove(KEY_LAST_ERROR)
+                .remove(KEY_NOTIFIED_RESETS)
+        }
+        editor.apply()
+        return true
+    }
+
     /**
      * Applies a topic change to [preferences] in a single editor commit.
      *
@@ -92,6 +215,8 @@ object StatusStore {
             preferences.edit()
                 .remove(KEY_TOPIC)
                 .putBoolean(KEY_TOPIC_CLEARED, true)
+                // An empty topic detaches the E2E key: nothing can be decrypted anymore.
+                .remove(KEY_NTFY_E2E_KEY)
                 .remove(KEY_LAST_JSON)
                 .remove(KEY_LAST_ERROR)
                 .remove(KEY_NOTIFIED_RESETS)

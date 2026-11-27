@@ -1,0 +1,344 @@
+{
+  "schema": "agw_e2e_pairing_v1",
+  "aad": "agw-ntfy-e2e:v1",
+  "default_ntfy_server": "https://ntfy.sh",
+  "e2e_key_length": 43,
+  "e2e_key_bytes": 32,
+  "e2e_iv_bytes": 12,
+  "e2e_tag_bytes": 16,
+  "aes_gcm_vectors": [
+    {
+      "name": "nist_tc13_empty_pt_no_aad",
+      "key_b64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "iv_b64": "AAAAAAAAAAAAAAAA",
+      "plaintext_hex": "",
+      "plaintext_utf8": null,
+      "ct_b64": "33-2m9ii0O4dYG447IQ8uQ",
+      "tag_b64": "33-2m9ii0O4dYG447IQ8uQ",
+      "envelope": {
+        "v": 1,
+        "alg": "aes-256-gcm",
+        "iv": "AAAAAAAAAAAAAAAA",
+        "ct": "33-2m9ii0O4dYG447IQ8uQ"
+      }
+    },
+    {
+      "name": "nist_tc14_16b_pt_no_aad",
+      "key_b64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "iv_b64": "AAAAAAAAAAAAAAAA",
+      "plaintext_hex": "00000000000000000000000000000000",
+      "plaintext_utf8": null,
+      "ct_b64": "zqdAPU1ga24HTsXTuvOdGHMUIQEDtE4cwGAOXxRA2N8",
+      "tag_b64": "cxQhAQO0ThzAYA5fFEDY3w",
+      "envelope": {
+        "v": 1,
+        "alg": "aes-256-gcm",
+        "iv": "AAAAAAAAAAAAAAAA",
+        "ct": "zqdAPU1ga24HTsXTuvOdGHMUIQEDtE4cwGAOXxRA2N8"
+      }
+    },
+    {
+      "name": "nist_tc15_64b_pt_no_aad",
+      "key_b64": "_v_pkoZlcxxtao-UZzCDCP7_6ZKGZXMcbWqPlGcwgwg",
+      "iv_b64": "yv66vvrO263eyviI",
+      "plaintext_hex": "d9313225f88406e5a55909c5aff5269a86a7a9531534f7da2e4c303d8a318a721c3c0c95956809532fcf0e2449a6b525b16aedf5aa0de657ba637b391aafd255",
+      "plaintext_utf8": null,
+      "ct_b64": "Ui3B8JlWfQf0fzejKoRCfWQ6jNy_5cDJdZiivSVV0aqMsI5IWQ27PaewixBWgog4xfYeY5O6egq8yfZiiYAVrWh9yPxIP8tTDA2aRdUBI78",
+      "tag_b64": "aH3I_Eg_y1MMDZpF1QEjvw",
+      "envelope": {
+        "v": 1,
+        "alg": "aes-256-gcm",
+        "iv": "yv66vvrO263eyviI",
+        "ct": "Ui3B8JlWfQf0fzejKoRCfWQ6jNy_5cDJdZiivSVV0aqMsI5IWQ27PaewixBWgog4xfYeY5O6egq8yfZiiYAVrWh9yPxIP8tTDA2aRdUBI78"
+      }
+    },
+    {
+      "name": "nist_tc16_60b_pt_20b_aad",
+      "key_b64": "_v_pkoZlcxxtao-UZzCDCP7_6ZKGZXMcbWqPlGcwgwg",
+      "iv_b64": "yv66vvrO263eyviI",
+      "plaintext_hex": "d9313225f88406e5a55909c5aff5269a86a7a9531534f7da2e4c303d8a318a721c3c0c95956809532fcf0e2449a6b525b16aedf5aa0de657ba637b39",
+      "plaintext_utf8": null,
+      "ct_b64": "Ui3B8JlWfQf0fzejKoRCfWQ6jNy_5cDJdZiivSVV0aqMsI5IWQ27PaewixBWgog4xfYeY5O6egq8yfZiM3ZrVRw-1S36k_nv7ouAnA",
+      "tag_b64": "M3ZrVRw-1S36k_nv7ouAnA",
+      "envelope": {
+        "v": 1,
+        "alg": "aes-256-gcm",
+        "iv": "yv66vvrO263eyviI",
+        "ct": "Ui3B8JlWfQf0fzejKoRCfWQ6jNy_5cDJdZiivSVV0aqMsI5IWQ27PaewixBWgog4xfYeY5O6egq8yfZiM3ZrVRw-1S36k_nv7ouAnA"
+      }
+    },
+    {
+      "name": "agw_status_cyrillic",
+      "key_b64": "ULwC33v8c8sB4vAhYxYjl2XImDONcPETgYRMjlLrUsM",
+      "iv_b64": "obLD1OX2BxgpOktc",
+      "plaintext_hex": "7b22757064617465645f6174223a22323032362d31312d32365431343a30353a30305a222c2277696e646f7773223a5b7b226e616d65223a223520d187222c2272656d61696e696e67223a302e34387d2c7b226e616d65223a223720d0b4d0bd222c2272656d61696e696e67223a302e37327d5d2c226e6f7465223a22d09ad0bed0bdd182d0b5d0bad181d1823a20d0b7d0b0d0bdd18fd182d0be2034382520c2b720d0bed181d182d0b0d0bbd0bed181d18c203235334b20d0b8d0b7203531324b227d",
+      "plaintext_utf8": "{\"updated_at\":\"2026-11-26T14:05:00Z\",\"windows\":[{\"name\":\"5 ч\",\"remaining\":0.48},{\"name\":\"7 дн\",\"remaining\":0.72}],\"note\":\"Контекст: занято 48% · осталось 253K из 512K\"}",
+      "ct_b64": "gwfjGfHy3_yHFVgvlYyHKY9_YTzihbabvqR6xWFKzGiGMu8MZCOoZMSt8mYRJWxLB2BBgCTb1TFPCRfIuEvxLAPtV9fVda4CX48CXZBmfdmMUKUv0qWqP2PkXUzt3cbVRMwFT9rLgEHwJWLClTOAz5BLYGHxbfhKIKS5RuRnt-x-4vgIy3pUSoCdfkLfWqshFXw8DD970y0MqkUNKE9rqq5p_G4BQn3dFZT-XOSGrerw-lAWFewBes_Gy716WjjAIpXNOxq7QsfIB2ejVt01Ww_Pz6o",
+      "tag_b64": "GrtCx8gHZ6NW3TVbD8_Pqg",
+      "envelope": {
+        "v": 1,
+        "alg": "aes-256-gcm",
+        "iv": "obLD1OX2BxgpOktc",
+        "ct": "gwfjGfHy3_yHFVgvlYyHKY9_YTzihbabvqR6xWFKzGiGMu8MZCOoZMSt8mYRJWxLB2BBgCTb1TFPCRfIuEvxLAPtV9fVda4CX48CXZBmfdmMUKUv0qWqP2PkXUzt3cbVRMwFT9rLgEHwJWLClTOAz5BLYGHxbfhKIKS5RuRnt-x-4vgIy3pUSoCdfkLfWqshFXw8DD970y0MqkUNKE9rqq5p_G4BQn3dFZT-XOSGrerw-lAWFewBes_Gy716WjjAIpXNOxq7QsfIB2ejVt01Ww_Pz6o"
+      }
+    },
+    {
+      "name": "agw_status_tokens",
+      "key_b64": "5f_JBoHD5g1TRt_vVEVFZQYzsTw4anTj0XAMClCPb20",
+      "iv_b64": "Dx4tPEtaaXiHlqW0",
+      "plaintext_hex": "7b2276223a312c22736f75726365223a227063222c22746f7069635f68696e74223a226167772de280a2e280a2e280a2e280a237663361222c22746f6b656e73223a3337373030307d",
+      "plaintext_utf8": "{\"v\":1,\"source\":\"pc\",\"topic_hint\":\"agw-••••7f3a\",\"tokens\":377000}",
+      "ct_b64": "BOn0zkRUX9nfcHY9HW2TijAT-uBf2tG_dkzind0gQ9A0dvD-GHCFMRiarx7d-q6nsRnggaQFuu54DkUrjySBcz0PDufzKwIAu-RjlTALPU6vhX0-1xNRbVo",
+      "tag_b64": "5GOVMAs9Tq-FfT7XE1FtWg",
+      "envelope": {
+        "v": 1,
+        "alg": "aes-256-gcm",
+        "iv": "Dx4tPEtaaXiHlqW0",
+        "ct": "BOn0zkRUX9nfcHY9HW2TijAT-uBf2tG_dkzind0gQ9A0dvD-GHCFMRiarx7d-q6nsRnggaQFuu54DkUrjySBcz0PDufzKwIAu-RjlTALPU6vhX0-1xNRbVo"
+      }
+    }
+  ],
+  "aes_gcm_tamper_cases": [
+    {
+      "name": "corrupted_tag",
+      "key_b64": "_v_pkoZlcxxtao-UZzCDCP7_6ZKGZXMcbWqPlGcwgwg",
+      "envelope": {
+        "v": 1,
+        "alg": "aes-256-gcm",
+        "iv": "yv66vvrO263eyviI",
+        "ct": "Ui3B8JlWfQf0fzejKoRCfWQ6jNy_5cDJdZiivSVV0aqMsI5IWQ27PaewixBWgog4xfYeY5O6egq8yfZiiYAVrWh9yPxIP8tTDA2aRdUBI74"
+      },
+      "expect_error": true,
+      "note": "last tag byte flipped"
+    },
+    {
+      "name": "corrupted_iv",
+      "key_b64": "_v_pkoZlcxxtao-UZzCDCP7_6ZKGZXMcbWqPlGcwgwg",
+      "envelope": {
+        "v": 1,
+        "alg": "aes-256-gcm",
+        "iv": "Sv66vvrO263eyviI",
+        "ct": "Ui3B8JlWfQf0fzejKoRCfWQ6jNy_5cDJdZiivSVV0aqMsI5IWQ27PaewixBWgog4xfYeY5O6egq8yfZiiYAVrWh9yPxIP8tTDA2aRdUBI78"
+      },
+      "expect_error": true,
+      "note": "first IV byte flipped"
+    },
+    {
+      "name": "wrong_key",
+      "key_b64": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "envelope": {
+        "v": 1,
+        "alg": "aes-256-gcm",
+        "iv": "yv66vvrO263eyviI",
+        "ct": "Ui3B8JlWfQf0fzejKoRCfWQ6jNy_5cDJdZiivSVV0aqMsI5IWQ27PaewixBWgog4xfYeY5O6egq8yfZiiYAVrWh9yPxIP8tTDA2aRdUBI78"
+      },
+      "expect_error": true,
+      "note": "valid but unrelated 32-byte key"
+    },
+    {
+      "name": "wrong_alg",
+      "key_b64": "_v_pkoZlcxxtao-UZzCDCP7_6ZKGZXMcbWqPlGcwgwg",
+      "envelope": {
+        "v": 1,
+        "alg": "aes-128-gcm",
+        "iv": "yv66vvrO263eyviI",
+        "ct": "Ui3B8JlWfQf0fzejKoRCfWQ6jNy_5cDJdZiivSVV0aqMsI5IWQ27PaewixBWgog4xfYeY5O6egq8yfZiiYAVrWh9yPxIP8tTDA2aRdUBI78"
+      },
+      "expect_error": true,
+      "note": "alg downgraded to aes-128-gcm"
+    },
+    {
+      "name": "wrong_version",
+      "key_b64": "_v_pkoZlcxxtao-UZzCDCP7_6ZKGZXMcbWqPlGcwgwg",
+      "envelope": {
+        "v": 2,
+        "alg": "aes-256-gcm",
+        "iv": "yv66vvrO263eyviI",
+        "ct": "Ui3B8JlWfQf0fzejKoRCfWQ6jNy_5cDJdZiivSVV0aqMsI5IWQ27PaewixBWgog4xfYeY5O6egq8yfZiiYAVrWh9yPxIP8tTDA2aRdUBI78"
+      },
+      "expect_error": true,
+      "note": "envelope version 2"
+    },
+    {
+      "name": "truncated_ct",
+      "key_b64": "_v_pkoZlcxxtao-UZzCDCP7_6ZKGZXMcbWqPlGcwgwg",
+      "envelope": {
+        "v": 1,
+        "alg": "aes-256-gcm",
+        "iv": "yv66vvrO263eyviI",
+        "ct": "Ui3B8JlWfQc"
+      },
+      "expect_error": true,
+      "note": "ct shorter than the auth tag"
+    },
+    {
+      "name": "noncanonical_ct_padding",
+      "key_b64": "_v_pkoZlcxxtao-UZzCDCP7_6ZKGZXMcbWqPlGcwgwg",
+      "envelope": {
+        "v": 1,
+        "alg": "aes-256-gcm",
+        "iv": "yv66vvrO263eyviI",
+        "ct": "Ui3B8JlWfQf0fzejKoRCfWQ6jNy_5cDJdZiivSVV0aqMsI5IWQ27PaewixBWgog4xfYeY5O6egq8yfZiiYAVrWh9yPxIP8tTDA2aRdUBI78="
+      },
+      "expect_error": true,
+      "note": "ct with '=' padding"
+    },
+    {
+      "name": "noncanonical_ct_trailing_bits",
+      "key_b64": "_v_pkoZlcxxtao-UZzCDCP7_6ZKGZXMcbWqPlGcwgwg",
+      "envelope": {
+        "v": 1,
+        "alg": "aes-256-gcm",
+        "iv": "yv66vvrO263eyviI",
+        "ct": "Ui3B8JlWfQf0fzejKoRCfWQ6jNy_5cDJdZiivSVV0aqMsI5IWQ27PaewixBWgog4xfYeY5O6egq8yfZiiYAVrWh9yPxIP8tTDA2aRdUBI79"
+      },
+      "expect_error": true,
+      "note": "last char changed, decoding to identical bytes"
+    }
+  ],
+  "server_url_cases": {
+    "valid": [
+      {
+        "input": "https://ntfy.sh",
+        "expected": "https://ntfy.sh"
+      },
+      {
+        "input": "https://ntfy.sh:443/",
+        "expected": "https://ntfy.sh"
+      },
+      {
+        "input": "HTTPS://Ntfy.Example.com:8443/sub/",
+        "expected": "https://ntfy.example.com:8443/sub"
+      },
+      {
+        "input": "  https://ntfy.example.com/sub/path  ",
+        "expected": "https://ntfy.example.com/sub/path"
+      },
+      {
+        "input": "https://NTFY.SH:8443",
+        "expected": "https://ntfy.sh:8443"
+      }
+    ],
+    "invalid": [
+      "http://ntfy.sh",
+      "https://user:pass@ntfy.sh",
+      "https://ntfy.sh?x=1",
+      "https://ntfy.sh#frag",
+      "javascript:alert(1)",
+      "",
+      "   ",
+      "https:///nohost",
+      "https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.com"
+    ]
+  },
+  "pairing_uri_cases": {
+    "valid": [
+      {
+        "uri": "agw://pair?v=1&t=agw-abc_123",
+        "topic": "agw-abc_123",
+        "server": "https://ntfy.sh",
+        "e2e_key": null
+      },
+      {
+        "uri": "agw://pair?v=1&t=agw-abc&s=https%3A%2F%2Fntfy.example.com%3A8443%2Fsub",
+        "topic": "agw-abc",
+        "server": "https://ntfy.example.com:8443/sub",
+        "e2e_key": null
+      },
+      {
+        "uri": "agw://pair?v=1&t=agw-abc&k=_v_pkoZlcxxtao-UZzCDCP7_6ZKGZXMcbWqPlGcwgwg",
+        "topic": "agw-abc",
+        "server": "https://ntfy.sh",
+        "e2e_key": "_v_pkoZlcxxtao-UZzCDCP7_6ZKGZXMcbWqPlGcwgwg"
+      },
+      {
+        "uri": "agw://pair?v=1&t=agw-abc&s=https%3A%2F%2Fntfy.example.com&k=_v_pkoZlcxxtao-UZzCDCP7_6ZKGZXMcbWqPlGcwgwg",
+        "topic": "agw-abc",
+        "server": "https://ntfy.example.com",
+        "e2e_key": "_v_pkoZlcxxtao-UZzCDCP7_6ZKGZXMcbWqPlGcwgwg"
+      },
+      {
+        "uri": "agw://pair?v=1&t=agw-abc&utm_source=qr&k=_v_pkoZlcxxtao-UZzCDCP7_6ZKGZXMcbWqPlGcwgwg",
+        "topic": "agw-abc",
+        "server": "https://ntfy.sh",
+        "e2e_key": "_v_pkoZlcxxtao-UZzCDCP7_6ZKGZXMcbWqPlGcwgwg"
+      },
+      {
+        "uri": "agw://pair/?v=1&t=agw-abc",
+        "topic": "agw-abc",
+        "server": "https://ntfy.sh",
+        "e2e_key": null
+      }
+    ],
+    "invalid": [
+      {
+        "uri": "agwx://pair?v=1&t=agw-abc",
+        "reason": "wrong scheme"
+      },
+      {
+        "uri": "agw://other?v=1&t=agw-abc",
+        "reason": "wrong host"
+      },
+      {
+        "uri": "agw://pair/extra?v=1&t=agw-abc",
+        "reason": "extra path"
+      },
+      {
+        "uri": "agw://pair?v=2&t=agw-abc",
+        "reason": "unsupported version"
+      },
+      {
+        "uri": "agw://pair?v=1&t=agw-abc&t=agw-def",
+        "reason": "duplicated topic"
+      },
+      {
+        "uri": "agw://pair?v=1&t=agw-abc&t=",
+        "reason": "duplicated empty topic"
+      },
+      {
+        "uri": "agw://pair?v=1&t=agw-abc&k=_v_pkoZlcxxtao-UZzCDCP7_6ZKGZXMcbWqPlGcwgwg&k=_v_pkoZlcxxtao-UZzCDCP7_6ZKGZXMcbWqPlGcwgwg",
+        "reason": "duplicated key"
+      },
+      {
+        "uri": "agw://pair?v=1&t=",
+        "reason": "empty topic"
+      },
+      {
+        "uri": "agw://pair?v=1&t=bad%20topic",
+        "reason": "topic with a space"
+      },
+      {
+        "uri": "agw://pair?v=1&t=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "reason": "topic longer than 64 chars"
+      },
+      {
+        "uri": "agw://pair?v=1&t=agw-abc&s=http%3A%2F%2Fntfy.sh",
+        "reason": "cleartext server"
+      },
+      {
+        "uri": "agw://pair?v=1&t=agw-abc&s=",
+        "reason": "explicitly empty server"
+      },
+      {
+        "uri": "agw://pair?v=1&t=agw-abc&k=",
+        "reason": "explicitly empty key"
+      },
+      {
+        "uri": "agw://pair?v=1&t=agw-abc&k=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "reason": "31-byte key"
+      },
+      {
+        "uri": "agw://pair?v=1&t=agw-abc&k=*******************************************",
+        "reason": "non-base64url key"
+      },
+      {
+        "uri": "",
+        "reason": "empty URI"
+      },
+      {
+        "uri": "agw://pair?v=1",
+        "reason": "missing topic"
+      }
+    ]
+  }
+}

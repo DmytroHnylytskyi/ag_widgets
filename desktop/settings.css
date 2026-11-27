@@ -970,12 +970,14 @@ body {
   transition: transform 0.16s ease, background-color 0.16s ease;
 }
 
-.switch[aria-checked="true"] {
+.switch[aria-checked="true"],
+input.switch[type="checkbox"]:checked {
   background: var(--accent);
   border-color: var(--accent);
 }
 
-.switch[aria-checked="true"]::after {
+.switch[aria-checked="true"]::after,
+input.switch[type="checkbox"]:checked::after {
   transform: translateX(16px);
   background: var(--on-accent);
 }
@@ -1095,6 +1097,181 @@ textarea:disabled {
 body.is-disabled .settings-main,
 body.is-disabled .settings-footer {
   opacity: 0.72;
+}
+
+/* --- Sync tab ----------------------------------------------------------- */
+
+/* Three tabs share one 430px header: let them shrink (and ellipsize) instead
+   of pushing the row past the window edge at large `--font-scale` values. */
+.tabs .tab {
+  flex: 0 1 auto;
+}
+
+.sync-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+/* Label + switch row: 32px baseline, switch keeps its 36x20 size. */
+.sync-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-width: 0;
+  min-height: var(--control-md);
+}
+
+.sync-row .field-label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.sync-inline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* `width` + `box-sizing` keeps the URL field inside the 430px gutter even
+   when the browser draws its native validation UI. */
+.sync-inline .text-input {
+  flex: 1 1 0;
+  width: 100%;
+  min-width: 0;
+}
+
+.sync-inline .ghost-btn {
+  flex: 0 0 auto;
+}
+
+/* Native checkboxes reuse the single `.switch::after` knob above once
+   `appearance: none` removes the UA chrome (Chromium renders `::after` on
+   appearance-none inputs, so a second background-image knob would double up). */
+input.switch[type="checkbox"] {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+}
+
+input.switch[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* Key rotation is destructive: quiet ghost by default, danger once armed. */
+.sync-rotate {
+  align-self: flex-start;
+}
+
+.sync-rotate:hover {
+  color: var(--risk);
+  border-color: color-mix(in srgb, var(--risk) 50%, var(--field-border));
+}
+
+.btn.is-armed,
+.sync-rotate.is-armed {
+  border-color: var(--risk);
+  color: var(--risk);
+}
+
+.sync-rotate.is-armed {
+  background: color-mix(in srgb, var(--risk) 12%, transparent);
+}
+
+/* QR card: white substrate and black modules in every theme. */
+.qr-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.qr-frame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-3);
+  background: #ffffff;
+  border-radius: var(--r-card, var(--card-radius));
+}
+
+.qr-frame svg {
+  display: block;
+  width: 100%;
+  max-width: 260px;
+  height: auto;
+}
+
+/* Never `currentColor`: no theme is allowed to tint the data modules. */
+.qr-frame svg path {
+  fill: #000000;
+}
+
+.qr-badge {
+  align-self: flex-start;
+  min-height: 20px;
+  padding: 0 var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--field-border);
+  border-radius: var(--r-chip);
+  background: var(--badge);
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+  line-height: 16px;
+}
+
+.qr-badge.is-on {
+  border-color: color-mix(in srgb, var(--ok) 50%, var(--field-border));
+  color: var(--ok);
+}
+
+.mono {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  color: var(--text-secondary);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 11px;
+  line-height: 16px;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.qr-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.qr-actions .ghost-btn {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.field-error {
+  margin: var(--space-1) 0 0;
+  color: var(--risk);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.notice.is-error {
+  color: var(--text);
+  background: color-mix(in srgb, var(--risk) 14%, transparent);
+  border-color: color-mix(in srgb, var(--risk) 38%, transparent);
+}
+
+.notice.is-ok {
+  color: var(--text);
+  background: color-mix(in srgb, var(--ok) 14%, transparent);
+  border-color: color-mix(in srgb, var(--ok) 38%, transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {

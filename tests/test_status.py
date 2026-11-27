@@ -20,6 +20,9 @@ if str(ROOT) not in sys.path:
 
 from agwidgets import antigravity, context, paths, status, zcode  # noqa: E402
 
+VALID_E2E_KEY = "_v_pkoZlcxxtao-UZzCDCP7_6ZKGZXMcbWqPlGcwgwg"
+CUSTOM_NTFY_SERVER = "https://relay.example.com/secret-path"
+
 
 def _zcode_status(**overrides):
     """A healthy ZCode API result used by ``build_status``/``run_once`` tests."""
@@ -538,6 +541,153 @@ class RunOnceTests(unittest.TestCase):
         self.assertEqual(result["status_written"], False)
         self.assertIn("cannot decrypt topic", result["error"])
         self.assertFalse((self.state / "status.json").exists())
+
+
+class ChannelChangeTests(unittest.TestCase):
+    """E2E/server/ntfy-enabled transitions must reach the phone immediately."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.tmp = Path(self._tmp.name)
+        self.app = self.tmp / paths.APP_DIR_NAME
+        self.state = self.app / "state"
+        self.state.mkdir(parents=True)
+
+        self.stack = ExitStack()
+        self.addCleanup(self.stack.close)
+        self.stack.enter_context(mock.patch.dict(os.environ, {"LOCALAPPDATA": str(self.tmp)}))
+        self.stack.enter_context(
+            mock.patch.object(antigravity, "refresh_quota", return_value=False)
+        )
+        self.stack.enter_context(
+            mock.patch.object(zcode, "fetch_cached_status", return_value=_zcode_status())
+        )
+        self.stack.enter_context(
+            mock.patch.object(zcode, "query_zcode_api", side_effect=AssertionError("network access"))
+        )
+        self.publish = self.stack.enter_context(
+            mock.patch.object(status.ntfy, "publish", return_value=(True, "HTTP 200"))
+        )
+        self.stack.enter_context(
+            mock.patch.object(context, "detect_active_chat", return_value=None)
+        )
+        self.stack.enter_context(
+            mock.patch.object(paths, "ensure_ntfy_topic", return_value="agw-abc_123")
+        )
+
+    # -- helpers ---------------------------------------------------------
+
+    def write_config(self, payload: dict) -> dict:
+        paths.write_json(self.app / "config.json", payload)
+        return payload
+
+    def write_publish_state(self, last_published_ts, payload=None, **extra) -> None:
+        data = {"last_published_ts": last_published_ts}
+        if payload is not None:
+            data["last_payload"] = payload
+        data.update(extra)
+        paths.write_json(self.state / "publish_state.json", data)
+
+    def current_payload(self, config: dict | None = None):
+        return status.build_status(self.state, config or {}, datetime.now(timezone.utc))
+
+    def read_publish_state(self) -> dict:
+        return json.loads((self.state / "publish_state.json").read_text(encoding="utf-8"))
+
+    # -- tests -----------------------------------------------------------
+
+    def test_missing_e2e_flag_with_e2e_disabled_does_not_republish(self):
+        # ``None != False`` used to look like a channel switch on every run:
+        # an install that never enabled E2E must stay throttled.
+        self.write_publish_state(time.time() - 5, self.current_payload())
+
+        with mock.patch.object(paths, "get_e2e_key", return_value=None):
+            result = status.run_once()
+
+        self.publish.assert_not_called()
+        self.assertEqual(result["publish"]["reason"], "throttled_or_unchanged")
+
+    def test_truthy_non_bool_e2e_flag_is_normalized(self):
+        self.write_publish_state(
+            time.time() - 5,
+            self.current_payload(),
+            e2e_enabled="true",
+            server="https://ntfy.sh",
+        )
+
+        with mock.patch.object(paths, "get_e2e_key", return_value=VALID_E2E_KEY):
+            result = status.run_once()
+
+        self.publish.assert_not_called()
+        self.assertEqual(result["publish"]["reason"], "throttled_or_unchanged")
+
+    def test_first_enable_on_existing_install_publishes_immediately(self):
+        # No ``e2e_enabled`` key in publish_state: the implicit default is False.
+        self.write_publish_state(time.time() - 5, self.current_payload())
+
+        with mock.patch.object(paths, "get_e2e_key", return_value=VALID_E2E_KEY):
+            result = status.run_once()
+
+        self.publish.assert_called_once()
+        self.assertTrue(result["publish"]["published"])
+        self.assertEqual(self.publish.call_args.kwargs["e2e_key"], VALID_E2E_KEY)
+
+    def test_disable_on_existing_install_publishes_immediately(self):
+        self.write_publish_state(
+            time.time() - 5, self.current_payload(), e2e_enabled=True
+        )
+
+        with mock.patch.object(paths, "get_e2e_key", return_value=None):
+            result = status.run_once()
+
+        self.publish.assert_called_once()
+        self.assertTrue(result["publish"]["published"])
+        self.assertIsNone(self.publish.call_args.kwargs["e2e_key"])
+
+    def test_disabled_ntfy_does_not_publish(self):
+        self.write_config({"ntfy_enabled": False})
+
+        result = status.run_once()
+
+        self.publish.assert_not_called()
+        self.assertEqual(result["publish"]["reason"], "disabled")
+
+    def test_server_switch_publishes_to_the_new_server(self):
+        config = self.write_config({"ntfy_server": CUSTOM_NTFY_SERVER})
+        self.write_publish_state(
+            time.time() - 5,
+            self.current_payload(config),
+            e2e_enabled=False,
+            server="https://ntfy.sh",
+        )
+
+        with mock.patch.object(paths, "get_e2e_key", return_value=None):
+            result = status.run_once()
+
+        self.publish.assert_called_once()
+        self.assertTrue(result["publish"]["published"])
+        self.assertEqual(
+            self.publish.call_args.kwargs["server_url"], CUSTOM_NTFY_SERVER
+        )
+
+    def test_e2e_enabled_key_reaches_publish(self):
+        with mock.patch.object(paths, "get_e2e_key", return_value=VALID_E2E_KEY):
+            status.run_once(force_publish=True)
+
+        self.publish.assert_called_once()
+        self.assertEqual(self.publish.call_args.kwargs["e2e_key"], VALID_E2E_KEY)
+
+    def test_publish_state_records_e2e_flag_and_server(self):
+        self.write_config({"ntfy_server": CUSTOM_NTFY_SERVER})
+        with mock.patch.object(paths, "get_e2e_key", return_value=VALID_E2E_KEY):
+            status.run_once(force_publish=True)
+
+        state = self.read_publish_state()
+        self.assertIs(state["e2e_enabled"], True)
+        self.assertEqual(state["server"], CUSTOM_NTFY_SERVER)
+        self.assertIn("last_payload", state)
+        self.assertGreater(state["last_published_ts"], 0)
 
 
 class MainTests(unittest.TestCase):

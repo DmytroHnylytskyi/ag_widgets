@@ -48,8 +48,10 @@
     notice: byId('bridge-notice'),
     tabAppearance: byId('tab-appearance'),
     tabBuilder: byId('tab-builder'),
+    tabSync: byId('tab-sync'),
     panelAppearance: byId('panel-appearance'),
     panelBuilder: byId('panel-builder'),
+    panelSync: byId('panel-sync'),
     presets: queryAll('[data-preset]'),
     themes: queryAll('[data-theme-value]'),
     classicRow: byId('classic-variant'),
@@ -78,6 +80,22 @@
     openAtLogin: byId('open-at-login'),
     reset: byId('reset-appearance'),
     error: byId('settings-error'),
+    syncNtfyToggle: byId('sync-ntfy-toggle'),
+    syncServerInput: byId('sync-server-input'),
+    syncServerSave: byId('sync-server-save'),
+    syncServerError: byId('sync-server-error'),
+    syncE2eToggle: byId('sync-e2e-toggle'),
+    syncE2eRotate: byId('sync-e2e-rotate'),
+    syncE2eHint: byId('sync-e2e-hint'),
+    syncQrReveal: byId('sync-qr-reveal'),
+    syncQrWrap: byId('sync-qr-wrap'),
+    syncQrSvg: byId('sync-qr-svg'),
+    syncQrBadge: byId('sync-qr-badge'),
+    syncUri: byId('sync-uri'),
+    syncCopyUri: byId('sync-copy-uri'),
+    syncCopyTopic: byId('sync-copy-topic'),
+    syncQrHide: byId('sync-qr-hide'),
+    syncStatus: byId('sync-status'),
   };
 
   const bridge = window.agWidgets;
@@ -93,6 +111,11 @@
   let rangePatch = null;
   let errorTimer = null;
   let tabsBound = false;
+  let pairing = null;
+  let pairingLoaded = false;
+  let rotateArmed = false;
+  let rotateTimer = null;
+  let syncEventsBound = false;
 
   // --- small helpers -------------------------------------------------------
 
@@ -575,12 +598,403 @@
     applyPatch({ blocks: cloneBlocks(ensureBlocks()) });
   }
 
+  // --- sync tab ------------------------------------------------------------
+
+  const HTTPS_SERVER_PATTERN = /^https:\/\/[^\s/?#@]+(\/[^\s?#@]*)?$/i;
+  const SERVER_ERROR_MESSAGE = 'Адрес должен начинаться с https:// и не содержать @, ? или #.';
+  const ROTATE_CONFIRM_MS = 6000;
+  const ROTATE_LABEL = 'Сменить ключ';
+  const ROTATE_CONFIRM_LABEL = 'Подтвердить смену ключа';
+  const E2E_HINT_ON = 'Ключ хранится на этом устройстве и передаётся телефону через QR-код. При смене ключа телефон нужно переподключить.';
+  const E2E_HINT_OFF = 'Без E2E сообщения идут через сервер ntfy в открытом виде. Включите шифрование перед сопряжением.';
+
+  let pairingRequest = null;
+
+  function pairingBridgeReady() {
+    return hasBridge()
+      && typeof bridge.getPairing === 'function'
+      && typeof bridge.updatePairing === 'function';
+  }
+
+  function setSyncStatus(message, isError) {
+    if (!el.syncStatus) return;
+    const text = message || '';
+    el.syncStatus.textContent = text;
+    el.syncStatus.classList.toggle('hidden', !text);
+    el.syncStatus.classList.toggle('is-error', Boolean(text) && Boolean(isError));
+    el.syncStatus.classList.toggle('is-ok', Boolean(text) && !isError);
+  }
+
+  function setSyncBadge(enabled) {
+    if (!el.syncQrBadge) return;
+    el.syncQrBadge.textContent = enabled ? 'E2E вкл' : 'Без E2E';
+    el.syncQrBadge.classList.toggle('is-on', Boolean(enabled));
+  }
+
+  function updateE2eHint(enabled) {
+    if (el.syncE2eHint) el.syncE2eHint.textContent = enabled ? E2E_HINT_ON : E2E_HINT_OFF;
+  }
+
+  function setServerError(message) {
+    if (el.syncServerError) {
+      el.syncServerError.textContent = message || '';
+      el.syncServerError.classList.toggle('hidden', !message);
+    }
+    if (el.syncServerInput) {
+      el.syncServerInput.setAttribute('aria-invalid', message ? 'true' : 'false');
+    }
+  }
+
+  function isValidServerUrl(value) {
+    return typeof value === 'string' && HTTPS_SERVER_PATTERN.test(value.trim());
+  }
+
+  function refreshQr() {
+    if (!pairing) return;
+    setSyncBadge(pairing.e2e_enabled);
+    if (!el.syncQrWrap || el.syncQrWrap.classList.contains('hidden')) return;
+
+    const generator = window.AGW && window.AGW.qr;
+    if (!generator || typeof generator.renderQrSvg !== 'function') {
+      setSyncStatus('QR-генератор недоступен.', true);
+      return;
+    }
+
+    if (el.syncUri) el.syncUri.textContent = pairing.uri;
+    try {
+      const svg = generator.renderQrSvg(pairing.uri, { quietZone: 4 });
+      if (el.syncQrSvg) {
+        el.syncQrSvg.innerHTML = svg;
+        el.syncQrSvg.classList.remove('hidden');
+      }
+    } catch (error) {
+      if (el.syncQrSvg) {
+        el.syncQrSvg.innerHTML = '';
+        el.syncQrSvg.classList.add('hidden');
+      }
+      if (error && error.code === 'capacity') {
+        setSyncStatus('Ссылка слишком длинная для QR-кода — скопируйте её кнопкой ниже.', true);
+      } else {
+        setSyncStatus('Не удалось построить QR-код.', true);
+      }
+    }
+  }
+
+  function applyPairingSnapshot(snapshot, options) {
+    const forceServerInput = Boolean(options && options.forceServerInput);
+    if (!snapshot || typeof snapshot !== 'object' || snapshot.ok === false) {
+      const message = snapshot && typeof snapshot.error === 'string' && snapshot.error
+        ? snapshot.error
+        : 'Не удалось получить состояние сопряжения.';
+      setSyncStatus(message, true);
+      return false;
+    }
+
+    pairing = {
+      topic: typeof snapshot.topic === 'string' ? snapshot.topic : '',
+      server: typeof snapshot.server === 'string' ? snapshot.server : '',
+      ntfy_enabled: Boolean(snapshot.ntfy_enabled),
+      e2e_enabled: Boolean(snapshot.e2e_enabled),
+      uri: typeof snapshot.uri === 'string' ? snapshot.uri : '',
+    };
+    pairingLoaded = true;
+
+    if (el.syncNtfyToggle) el.syncNtfyToggle.checked = pairing.ntfy_enabled;
+    if (el.syncE2eToggle) el.syncE2eToggle.checked = pairing.e2e_enabled;
+    if (el.syncServerInput && (forceServerInput || document.activeElement !== el.syncServerInput)) {
+      el.syncServerInput.value = pairing.server;
+    }
+    setServerError('');
+    setSyncBadge(pairing.e2e_enabled);
+    updateE2eHint(pairing.e2e_enabled);
+    setSyncStatus('', false);
+    refreshQr();
+    return true;
+  }
+
+  function loadPairing() {
+    if (!pairingBridgeReady()) {
+      setSyncStatus('Синхронизация доступна только в приложении.', true);
+      return Promise.resolve(false);
+    }
+    if (pairingRequest) return pairingRequest;
+
+    pairingRequest = Promise.resolve()
+      .then(function () {
+        return bridge.getPairing();
+      })
+      .then(function (snapshot) {
+        const ok = applyPairingSnapshot(snapshot);
+        if (!ok) pairingLoaded = false;
+        return ok;
+      })
+      .catch(function () {
+        pairingLoaded = false;
+        setSyncStatus('Не удалось получить состояние сопряжения.', true);
+        return false;
+      })
+      .then(function (result) {
+        pairingRequest = null;
+        return result;
+      });
+    return pairingRequest;
+  }
+
+  function ensurePairingLoaded() {
+    if (pairingLoaded) return;
+    loadPairing();
+  }
+
+  function revealQr() {
+    if (!el.syncQrWrap) return;
+    el.syncQrWrap.hidden = false;
+    el.syncQrWrap.classList.remove('hidden');
+    if (el.syncQrReveal) el.syncQrReveal.classList.add('hidden');
+    if (pairingLoaded) {
+      refreshQr();
+      return;
+    }
+    loadPairing().then(function (ok) {
+      if (ok) {
+        refreshQr();
+        return;
+      }
+      hideQr();
+    });
+  }
+
+  function hideQr() {
+    if (el.syncQrWrap) {
+      el.syncQrWrap.hidden = true;
+      el.syncQrWrap.classList.add('hidden');
+    }
+    if (el.syncQrReveal) el.syncQrReveal.classList.remove('hidden');
+    // Clear the secret from the DOM whenever the QR card is not on screen.
+    if (el.syncQrSvg) el.syncQrSvg.innerHTML = '';
+    if (el.syncUri) el.syncUri.textContent = '';
+  }
+
+  /**
+   * Copy through the main process when the Electron bridge is present
+   * (`navigator.clipboard` is rejected in the sandboxed `file://` window),
+   * and fall back to the Web API when the page is opened in a plain browser.
+   */
+  async function writeClipboardText(text) {
+    try {
+      if (hasBridge() && bridge && typeof bridge.copyText === 'function') {
+        const res = await bridge.copyText(text);
+        // No Web fallback here: it is guaranteed to fail in this window.
+        return Boolean(res && res.ok === true);
+      }
+    } catch (error) {
+      return false;
+    }
+    try {
+      if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
+        return false;
+      }
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  async function copyToClipboard(text, okMessage) {
+    if (!text) {
+      setSyncStatus('Данные сопряжения ещё не загружены.', true);
+      return;
+    }
+    const ok = await writeClipboardText(text);
+    if (ok) {
+      setSyncStatus(okMessage, false);
+    } else {
+      setSyncStatus('Не удалось скопировать в буфер обмена.', true);
+    }
+  }
+
+  function disarmRotate() {
+    if (rotateTimer) {
+      clearTimeout(rotateTimer);
+      rotateTimer = null;
+    }
+    rotateArmed = false;
+    if (!el.syncE2eRotate) return;
+    el.syncE2eRotate.classList.remove('is-armed');
+    delete el.syncE2eRotate.dataset.armed;
+    el.syncE2eRotate.textContent = ROTATE_LABEL;
+  }
+
+  function armRotate() {
+    if (!el.syncE2eRotate) return;
+    rotateArmed = true;
+    el.syncE2eRotate.dataset.armed = 'true';
+    el.syncE2eRotate.classList.add('is-armed');
+    el.syncE2eRotate.textContent = ROTATE_CONFIRM_LABEL;
+    if (rotateTimer) clearTimeout(rotateTimer);
+    rotateTimer = setTimeout(disarmRotate, ROTATE_CONFIRM_MS);
+  }
+
+  function handleRotate() {
+    if (!pairingBridgeReady()) return;
+    if (!rotateArmed) {
+      armRotate();
+      return;
+    }
+    disarmRotate();
+    queue = queue
+      .then(function () {
+        return bridge.updatePairing({ e2e_action: 'rotate' });
+      })
+      .then(function (snapshot) {
+        if (!applyPairingSnapshot(snapshot)) return;
+        setSyncStatus(
+          'Ключ сменён. Переподключите телефон: откройте QR-код заново и отсканируйте его.',
+          false,
+        );
+      }, function () {
+        setSyncStatus('Не удалось сменить ключ шифрования.', true);
+      });
+  }
+
+  function handleNtfyToggle() {
+    if (!el.syncNtfyToggle) return;
+    if (!pairingBridgeReady()) {
+      el.syncNtfyToggle.checked = !el.syncNtfyToggle.checked;
+      return;
+    }
+    const desired = Boolean(el.syncNtfyToggle.checked);
+    const previous = pairing ? Boolean(pairing.ntfy_enabled) : !desired;
+    if (pairing) pairing.ntfy_enabled = desired;
+    const revert = function (message) {
+      if (el.syncNtfyToggle) el.syncNtfyToggle.checked = previous;
+      if (pairing) pairing.ntfy_enabled = previous;
+      if (message) setSyncStatus(message, true);
+    };
+    queue = queue
+      .then(function () {
+        return bridge.updatePairing({ ntfy_enabled: desired });
+      })
+      .then(function (snapshot) {
+        if (!applyPairingSnapshot(snapshot)) revert();
+      }, function () {
+        revert('Не удалось изменить синхронизацию.');
+      });
+  }
+
+  function handleE2eToggle() {
+    if (!el.syncE2eToggle) return;
+    if (!pairingBridgeReady()) {
+      el.syncE2eToggle.checked = !el.syncE2eToggle.checked;
+      return;
+    }
+    const desired = Boolean(el.syncE2eToggle.checked);
+    const previous = pairing ? Boolean(pairing.e2e_enabled) : !desired;
+    if (pairing) pairing.e2e_enabled = desired;
+    const revert = function (message) {
+      if (el.syncE2eToggle) el.syncE2eToggle.checked = previous;
+      if (pairing) pairing.e2e_enabled = previous;
+      setSyncBadge(previous);
+      updateE2eHint(previous);
+      if (message) setSyncStatus(message, true);
+    };
+    queue = queue
+      .then(function () {
+        return bridge.updatePairing({ e2e_action: desired ? 'enable' : 'disable' });
+      })
+      .then(function (snapshot) {
+        if (!applyPairingSnapshot(snapshot)) revert();
+      }, function () {
+        revert('Не удалось изменить E2E-шифрование.');
+      });
+  }
+
+  function handleServerSave() {
+    if (!el.syncServerInput || !pairingBridgeReady()) return;
+    const raw = el.syncServerInput.value.trim();
+    const candidate = raw || 'https://ntfy.sh';
+    if (!isValidServerUrl(candidate)) {
+      setServerError(SERVER_ERROR_MESSAGE);
+      return;
+    }
+    setServerError('');
+    queue = queue
+      .then(function () {
+        return bridge.updatePairing({ ntfy_server: candidate });
+      })
+      .then(function (snapshot) {
+        if (applyPairingSnapshot(snapshot, { forceServerInput: true })) {
+          setSyncStatus('Сервер ntfy сохранён.', false);
+        }
+      }, function () {
+        setSyncStatus('Не удалось сохранить сервер ntfy.', true);
+      });
+  }
+
+  function bindSyncEvents() {
+    if (syncEventsBound) return;
+    syncEventsBound = true;
+
+    if (el.syncNtfyToggle) {
+      el.syncNtfyToggle.addEventListener('change', guard(handleNtfyToggle));
+    }
+    if (el.syncE2eToggle) {
+      el.syncE2eToggle.addEventListener('change', guard(handleE2eToggle));
+    }
+    if (el.syncServerSave) {
+      el.syncServerSave.addEventListener('click', guard(handleServerSave));
+    }
+    if (el.syncServerInput) {
+      el.syncServerInput.addEventListener('input', guard(function () {
+        setServerError('');
+      }));
+      el.syncServerInput.addEventListener('keydown', guard(function (event) {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        handleServerSave();
+      }));
+    }
+    if (el.syncE2eRotate) {
+      el.syncE2eRotate.addEventListener('click', guard(handleRotate));
+    }
+    if (el.syncQrReveal) {
+      el.syncQrReveal.addEventListener('click', guard(revealQr));
+    }
+    if (el.syncQrHide) {
+      el.syncQrHide.addEventListener('click', guard(hideQr));
+    }
+    if (el.syncCopyUri) {
+      el.syncCopyUri.addEventListener('click', guard(function () {
+        copyToClipboard(pairing ? pairing.uri : '', 'Ссылка сопряжения скопирована.');
+      }));
+    }
+    if (el.syncCopyTopic) {
+      el.syncCopyTopic.addEventListener('click', guard(function () {
+        copyToClipboard(pairing ? pairing.topic : '', 'Тема скопирована.');
+      }));
+    }
+
+    // Any other click, any typing or Escape cancels the armed key rotation.
+    document.addEventListener('click', guard(function (event) {
+      if (!rotateArmed) return;
+      if (el.syncE2eRotate && event.target === el.syncE2eRotate) return;
+      disarmRotate();
+    }), true);
+    document.addEventListener('input', guard(function () {
+      if (rotateArmed) disarmRotate();
+    }), true);
+    document.addEventListener('keydown', guard(function (event) {
+      if (rotateArmed && event.key === 'Escape') disarmRotate();
+    }));
+  }
+
   // --- tabs ----------------------------------------------------------------
 
   function selectTab(tabId) {
     const pairs = [
       [el.tabAppearance, el.panelAppearance],
       [el.tabBuilder, el.panelBuilder],
+      [el.tabSync, el.panelSync],
     ];
     pairs.forEach(function (pair) {
       const tab = pair[0];
@@ -592,12 +1006,20 @@
       tab.classList.toggle('is-active', active);
       panel.classList.toggle('hidden', !active);
     });
+
+    if (tabId === 'tab-sync') {
+      // Lazy: pairing state is only fetched when the tab is first opened.
+      ensurePairingLoaded();
+      return;
+    }
+    // Leaving the tab wipes the pairing secret from the DOM.
+    hideQr();
   }
 
   function bindTabs() {
     if (tabsBound) return;
     tabsBound = true;
-    const tabs = [el.tabAppearance, el.tabBuilder].filter(Boolean);
+    const tabs = [el.tabAppearance, el.tabBuilder, el.tabSync].filter(Boolean);
     if (!tabs.length) return;
 
     tabs.forEach(function (tab) {
@@ -778,13 +1200,10 @@
         return;
       }
     }
-    try {
-      if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
-        throw new Error('clipboard unavailable');
-      }
-      await navigator.clipboard.writeText(json);
+    const ok = await writeClipboardText(json);
+    if (ok) {
       setJsonStatus('JSON скопирован в буфер обмена', false);
-    } catch (error) {
+    } else {
       if (el.importArea) el.importArea.value = json;
       setJsonStatus('Скопируйте JSON из поля ниже', false);
     }
@@ -1058,6 +1477,8 @@
         resetAppearance();
       }));
     }
+
+    bindSyncEvents();
   }
 
   function showUnavailable() {

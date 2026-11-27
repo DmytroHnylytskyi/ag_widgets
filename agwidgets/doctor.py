@@ -27,7 +27,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Callable
 
-from . import antigravity, context, crypto, paths, zcode
+from . import antigravity, context, crypto, e2e, paths, zcode
 
 SCHEMA_VERSION = 1
 TOOL_NAME = "ag-widgets-doctor"
@@ -92,9 +92,11 @@ def _read_secret_state(app_dir: Path) -> dict[str, Any]:
         "present": data is not None,
         "token": "",
         "topic": "",
+        "e2e_key": "",
         "device_mid": "",
         "token_configured": False,
         "topic_configured": False,
+        "e2e_configured": False,
         "encrypted": False,
         "legacy_plaintext": False,
         "errors": [],
@@ -106,6 +108,7 @@ def _read_secret_state(app_dir: Path) -> dict[str, Any]:
     encrypted_sources = (
         ("zcode_token_enc", _nonempty_str(data.get("zcode_token_enc"))),
         ("ntfy_topic_enc", _nonempty_str(data.get("ntfy_topic_enc"))),
+        ("ntfy_e2e_key_enc", _nonempty_str(data.get("ntfy_e2e_key_enc"))),
     )
     for key, raw in encrypted_sources:
         if not raw:
@@ -123,21 +126,28 @@ def _read_secret_state(app_dir: Path) -> dict[str, Any]:
             plain = raw
         if key == "zcode_token_enc":
             state["token"] = plain
-        else:
+        elif key == "ntfy_topic_enc":
             state["topic"] = plain
+        else:
+            state["e2e_key"] = plain
 
     token_legacy = _nonempty_str(data.get("zcode_token"))
     topic_legacy = _nonempty_str(data.get("ntfy_topic"))
+    e2e_legacy = _nonempty_str(data.get("ntfy_e2e_key"))
     if token_legacy:
         state["legacy_plaintext"] = True
         state["token"] = state["token"] or token_legacy
     if topic_legacy:
         state["legacy_plaintext"] = True
         state["topic"] = state["topic"] or topic_legacy
+    if e2e_legacy:
+        state["legacy_plaintext"] = True
+        state["e2e_key"] = state["e2e_key"] or e2e_legacy
 
     state["device_mid"] = _nonempty_str(data.get("device_mid"))
     state["token_configured"] = bool(state["token"])
     state["topic_configured"] = bool(state["topic"])
+    state["e2e_configured"] = bool(state["e2e_key"])
     state["errors"] = errors
     return state
 
@@ -311,6 +321,7 @@ def _check_secrets_storage(app_dir: Path) -> tuple[str, str]:
     flags = (
         f"token_configured={_stringify_bool(state['token_configured'])}, "
         f"topic_configured={_stringify_bool(state['topic_configured'])}, "
+        f"e2e_configured={_stringify_bool(state['e2e_configured'])}, "
         f"encrypted={_stringify_bool(state['encrypted'])}"
     )
     if state["errors"]:
@@ -322,10 +333,10 @@ def _check_secrets_storage(app_dir: Path) -> tuple[str, str]:
     return "ok", flags
 
 
-def _probe_ntfy_status() -> int:
-    """Return the HTTP status of ``https://ntfy.sh`` without reading the body."""
+def _probe_ntfy_status(server_url: str = NTFY_PROBE_URL) -> int:
+    """Return the HTTP status of the ntfy server without reading the body."""
     try:
-        with urllib.request.urlopen(NTFY_PROBE_URL, timeout=NETWORK_TIMEOUT_SEC) as response:
+        with urllib.request.urlopen(server_url, timeout=NETWORK_TIMEOUT_SEC) as response:
             return int(getattr(response, "status", 0) or 0)
     except urllib.error.HTTPError as exc:
         code = int(getattr(exc, "code", 0) or 0)
@@ -336,14 +347,30 @@ def _probe_ntfy_status() -> int:
         return code
 
 
-def _check_ntfy_reachability() -> tuple[str, str]:
+def _check_ntfy_reachability(app_dir: Path) -> tuple[str, str]:
+    """Probe the configured ntfy server, honoring ``ntfy_enabled``.
+
+    Only the HTTP status leaves this check: the server URL itself is never
+    printed, so a private relay path cannot leak into a shared report.
+    """
     try:
-        code = _probe_ntfy_status()
+        config = paths.read_json_strict(Path(app_dir) / "config.json") or {}
+    except paths.ConfigReadError:
+        config = {}
+    if config.get("ntfy_enabled", True) is False:
+        return "ok", "ntfy publishing disabled (PC-only mode)"
+    try:
+        server_url = e2e.normalize_ntfy_server(config.get("ntfy_server"))
+    except ValueError:
+        server_url = e2e.DEFAULT_NTFY_URL
+
+    try:
+        code = _probe_ntfy_status(server_url)
     except (urllib.error.URLError, OSError, ValueError, http.client.HTTPException) as exc:
-        return "fail", f"cannot reach ntfy.sh ({type(exc).__name__})"
+        return "fail", f"cannot reach the configured ntfy server ({type(exc).__name__})"
     if 0 < code < 500:
-        return "ok", f"ntfy.sh reachable (HTTP {code})"
-    return "fail", f"ntfy.sh returned HTTP {code}"
+        return "ok", f"ntfy server reachable (HTTP {code})"
+    return "fail", f"ntfy server returned HTTP {code}"
 
 
 def _check_zcode_api(app_dir: Path) -> tuple[str, str]:
@@ -415,7 +442,7 @@ def run_checks(
     add("state_freshness", lambda: _check_state_freshness(state_path))
     add("secrets_storage", lambda: _check_secrets_storage(app_path))
     if network:
-        add("ntfy_reachability", _check_ntfy_reachability)
+        add("ntfy_reachability", lambda: _check_ntfy_reachability(app_path))
         add("zcode_api", lambda: _check_zcode_api(app_path))
     return checks
 

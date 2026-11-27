@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.sp
 import dev.agwidgets.R
 import dev.agwidgets.ui.components.GlassCard
 import dev.agwidgets.ui.components.SectionHeader
+import dev.agwidgets.ui.components.UiIcons
 import dev.agwidgets.ui.theme.AgDim
 import dev.agwidgets.ui.theme.AgTheme
 import dev.agwidgets.ui.theme.AgType
@@ -40,6 +41,7 @@ import dev.agwidgets.ui.theme.AgType
 internal fun OnboardingScreen(
     zcodeAvailable: Boolean,
     onChoosePc: () -> Unit,
+    onScanQr: () -> Unit,
     onChooseZcode: () -> Unit,
 ) {
     val colors = AgTheme.colors
@@ -152,6 +154,27 @@ internal fun OnboardingScreen(
                 style = AgType.body,
                 color = colors.secondary,
             )
+            // The QR scan is the primary path: it sets the mode *and* the whole
+            // channel in one step. "Выбрать ПК" stays as the manual fallback.
+            Button(
+                onClick = onScanQr,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(AgDim.MinTouch),
+                shape = RoundedCornerShape(AgDim.ControlRadius),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = colors.glow,
+                    contentColor = colors.onGlow,
+                ),
+            ) {
+                Icon(
+                    imageVector = UiIcons.QrCode,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(text = "Сканировать QR-код с ПК", style = AgType.body)
+            }
             OutlinedButton(
                 onClick = onChoosePc,
                 modifier = Modifier

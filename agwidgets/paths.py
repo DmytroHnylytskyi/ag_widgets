@@ -23,7 +23,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable, Iterator
 
-from . import crypto
+from . import crypto, e2e
 
 APP_DIR_NAME = "ag-widgets"
 NTFY_TOPIC_RE = r"^[A-Za-z0-9_-]{1,64}$"
@@ -326,3 +326,99 @@ def ensure_ntfy_topic() -> str:
         _store_topic(secrets_data, topic)
         write_json(secrets_file, secrets_data)
         return topic
+
+
+def get_ntfy_server(config: dict[str, Any] | None = None) -> str:
+    """Return the configured ntfy server, or ``https://ntfy.sh`` when unset.
+
+    An invalid value is never used for requests: it falls back to the default
+    instead of raising, so a hand-edited ``config.json`` cannot break publishing.
+    """
+    data = config if isinstance(config, dict) else load_config()
+    try:
+        return e2e.normalize_ntfy_server(data.get("ntfy_server"))
+    except ValueError:
+        return e2e.DEFAULT_NTFY_URL
+
+
+def is_ntfy_enabled(config: dict[str, Any] | None = None) -> bool:
+    """Return ``False`` only when the user explicitly disabled publishing."""
+    data = config if isinstance(config, dict) else load_config()
+    return data.get("ntfy_enabled", True) is not False
+
+
+def _store_e2e_key(secrets_data: dict[str, Any], key_b64: str | None) -> None:
+    """Write (or remove) the E2E key using the platform's storage key."""
+    secrets_data.pop("ntfy_e2e_key", None)
+    secrets_data.pop("ntfy_e2e_key_enc", None)
+    if key_b64 is None:
+        return
+    if crypto.encryption_available():
+        secrets_data["ntfy_e2e_key_enc"] = crypto.protect_secret(key_b64)
+    else:
+        secrets_data["ntfy_e2e_key"] = key_b64
+
+
+def _read_e2e_key(secrets_data: dict[str, Any]) -> tuple[str | None, bool]:
+    """Return ``(key, legacy_plaintext)`` from one secrets document."""
+    stored = secrets_data.get("ntfy_e2e_key_enc")
+    if isinstance(stored, str) and stored.strip():
+        key = crypto.unprotect_secret(stored.strip())  # Raises on tampering.
+        e2e.decode_key(key)
+        return key.strip(), False
+    legacy = secrets_data.get("ntfy_e2e_key")
+    if isinstance(legacy, str) and legacy.strip():
+        key = legacy.strip()
+        e2e.decode_key(key)
+        return key, True
+    return None, False
+
+
+def get_e2e_key() -> str | None:
+    """Return the shared E2E key, migrating a legacy plaintext value.
+
+    ``None`` means E2E is disabled. A value that cannot be decrypted raises
+    :class:`crypto.SecretDecryptError` instead of silently disabling encryption.
+    """
+    secrets_file = secrets_path()
+    with file_lock(lock_path_for(secrets_file)):
+        secrets_data = read_json_strict(secrets_file) or {}
+        key, legacy = _read_e2e_key(secrets_data)
+        # Only migrate when the platform can actually encrypt: without DPAPI the
+        # value would be written back in plaintext and every read would rewrite
+        # secrets.json for nothing.
+        if key is not None and legacy and crypto.encryption_available():
+            _store_e2e_key(secrets_data, key)
+            write_json(secrets_file, secrets_data)
+        return key
+
+
+def set_e2e_key(key_b64: str | None) -> None:
+    """Persist ``key_b64`` (or remove the stored key when ``None``)."""
+    secrets_file = secrets_path()
+    with file_lock(lock_path_for(secrets_file)):
+        secrets_data = read_json_strict(secrets_file) or {}
+        if key_b64 is None:
+            _store_e2e_key(secrets_data, None)
+        else:
+            clean = key_b64.strip()
+            e2e.decode_key(clean)
+            _store_e2e_key(secrets_data, clean)
+        write_json(secrets_file, secrets_data)
+
+
+def ensure_e2e_key() -> str:
+    """Return the existing E2E key, creating a fresh one when E2E is enabled."""
+    secrets_file = secrets_path()
+    with file_lock(lock_path_for(secrets_file)):
+        secrets_data = read_json_strict(secrets_file) or {}
+        key, legacy = _read_e2e_key(secrets_data)
+        if key is not None:
+            if legacy and crypto.encryption_available():
+                _store_e2e_key(secrets_data, key)
+                write_json(secrets_file, secrets_data)
+            return key
+        created = e2e.generate_key()
+        _store_e2e_key(secrets_data, created)
+        write_json(secrets_file, secrets_data)
+        return created

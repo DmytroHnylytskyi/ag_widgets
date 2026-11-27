@@ -17,7 +17,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from agwidgets import ntfy  # noqa: E402
+from agwidgets import e2e, ntfy  # noqa: E402
+
+VALID_E2E_KEY = "_v_pkoZlcxxtao-UZzCDCP7_6ZKGZXMcbWqPlGcwgwg"
+CUSTOM_SERVER = "https://relay.example.com/secret-path"
 
 
 class _FakeResponse:
@@ -284,6 +287,78 @@ class PublishTests(unittest.TestCase):
 
         self.assertTrue(ok)
         self.assertEqual(payload, original)
+
+
+class E2ePublishTests(unittest.TestCase):
+    """The encrypted branch must emit an envelope and never leak plaintext."""
+
+    def test_custom_server_url_is_used(self):
+        with mock.patch.object(
+            ntfy.urllib.request, "urlopen", return_value=_FakeResponse(200)
+        ) as urlopen:
+            self.assertEqual(
+                ntfy.publish("agw-abc_123", {"a": 1}, server_url=CUSTOM_SERVER),
+                (True, "HTTP 200"),
+            )
+
+        request = urlopen.call_args.args[0]
+        self.assertEqual(request.full_url, f"{CUSTOM_SERVER}/agw-abc_123")
+
+    def test_e2e_body_is_a_decryptable_envelope(self):
+        payload = {"schema_version": 2, "zcode": {"matched": "sentinel-plaintext"}}
+        with mock.patch.object(
+            ntfy.urllib.request, "urlopen", return_value=_FakeResponse(200)
+        ) as urlopen:
+            self.assertEqual(
+                ntfy.publish("agw-abc_123", payload, e2e_key=VALID_E2E_KEY),
+                (True, "HTTP 200"),
+            )
+
+        request = urlopen.call_args.args[0]
+        body = json.loads(request.data.decode("utf-8"))
+        self.assertTrue(e2e.is_e2e_envelope(body))
+        self.assertEqual(
+            e2e.decrypt_envelope(body, VALID_E2E_KEY), ntfy._encode(payload)
+        )
+        self.assertIn("application/json", request.get_header("Content-type") or "")
+        self.assertEqual(request.full_url, "https://ntfy.sh/agw-abc_123")
+        self.assertNotIn("sentinel-plaintext", request.data.decode("utf-8"))
+        self.assertNotIn(VALID_E2E_KEY, request.data.decode("utf-8"))
+
+    def test_e2e_shrinks_payload_before_encrypting(self):
+        payload = {"zcode": {"matched": "m" * 4000, "plan_id": "p1"}}
+        self.assertGreater(_encoded_size(payload), ntfy.MAX_E2E_PLAINTEXT_BYTES)
+        with mock.patch.object(
+            ntfy.urllib.request, "urlopen", return_value=_FakeResponse(200)
+        ) as urlopen:
+            self.assertTrue(ntfy.publish("agw-abc_123", payload, e2e_key=VALID_E2E_KEY)[0])
+
+        body = json.loads(urlopen.call_args.args[0].data.decode("utf-8"))
+        plaintext = e2e.decrypt_envelope(body, VALID_E2E_KEY)
+        self.assertLessEqual(len(plaintext), ntfy.MAX_E2E_PLAINTEXT_BYTES)
+        decoded = json.loads(plaintext.decode("utf-8"))
+        self.assertEqual(len(decoded["zcode"]["matched"]), 64)
+
+    def test_e2e_payload_over_limit_is_rejected(self):
+        payload = {"context_summary": {"conversation_id": "c" * 5000}}
+        with mock.patch.object(ntfy.urllib.request, "urlopen") as urlopen:
+            ok, detail = ntfy.publish("agw-abc_123", payload, e2e_key=VALID_E2E_KEY)
+
+        self.assertFalse(ok)
+        match = re.fullmatch(r"payload too large \((\d+) bytes\)", detail)
+        self.assertIsNotNone(match)
+        self.assertGreater(int(match.group(1)), ntfy.MAX_E2E_PLAINTEXT_BYTES)
+        urlopen.assert_not_called()
+
+    def test_e2e_invalid_key_is_rejected(self):
+        with mock.patch.object(ntfy.urllib.request, "urlopen") as urlopen:
+            for key in ("short", "", "A" * 42 + "*"):
+                with self.subTest(key=key):
+                    self.assertEqual(
+                        ntfy.publish("agw-abc_123", {"a": 1}, e2e_key=key),
+                        (False, "invalid e2e key"),
+                    )
+        urlopen.assert_not_called()
 
 
 if __name__ == "__main__":

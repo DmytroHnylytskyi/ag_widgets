@@ -30,6 +30,7 @@ internal object UiIcons {
     val AlertCircle: ImageVector by lazy { alertCircle("AlertCircle") }
     val Check: ImageVector by lazy { check("Check") }
     val Close: ImageVector by lazy { closeIcon("Close") }
+    val QrCode: ImageVector by lazy { qrCode("QrCode") }
 }
 
 private const val STROKE = 1.75f
@@ -153,4 +154,32 @@ private fun closeIcon(name: String): ImageVector = lineIcon(name) {
     lineTo(17.8f, 17.8f)
     moveTo(17.8f, 6.2f)
     lineTo(6.2f, 17.8f)
+}
+
+/**
+ * QR glyph: three corner "eyes" plus a couple of modules in the free corner.
+ * All strokes, no fills, so it matches the rest of the set at 18dp.
+ */
+private fun qrCode(name: String): ImageVector = lineIcon(name) {
+    qrEye(4.25f, 4.25f)
+    qrEye(14.25f, 4.25f)
+    qrEye(4.25f, 14.25f)
+    // Bottom-right module cluster: a small square plus a tick-like dot.
+    moveTo(15f, 15f)
+    lineTo(18.5f, 15f)
+    lineTo(18.5f, 18.5f)
+    lineTo(15f, 18.5f)
+    close()
+    moveTo(15f, 20f)
+    lineTo(15f, 20.1f)
+}
+
+/** One 5.5dp QR "eye" (corner square), drawn as an outline. */
+private fun PathBuilder.qrEye(left: Float, top: Float) {
+    val side = 5.5f
+    moveTo(left, top)
+    lineTo(left + side, top)
+    lineTo(left + side, top + side)
+    lineTo(left, top + side)
+    close()
 }

@@ -148,4 +148,7 @@ dependencies {
   // Glance widget & WorkManager
   implementation(libs.androidx.glance.appwidget)
   implementation(libs.androidx.work.runtime.ktx)
+
+  // Google Play Services code scanner: no CAMERA permission needed
+  implementation(libs.play.services.code.scanner)
 }
