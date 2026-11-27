@@ -133,8 +133,13 @@ Triggers:
 
 | Trigger | Behaviour |
 |---|---|
-| Push of a `v*` tag | Builds and publishes the release automatically. |
+| Push of a `v*` tag | Builds and publishes the release automatically, but only when the signing secrets are present (see below). |
 | `workflow_dispatch` | Manual run. `publish` defaults to `false`: a safe dry-run that leaves the artifacts in Actions and creates no release; `prerelease` defaults to `true`. |
+
+The tag must match `versionName` in `android/app/build.gradle.kts`: bump
+`versionName` and `versionCode` in the release PR before tagging, otherwise the
+`build-android` job fails instead of publishing an APK that reports the wrong
+version.
 
 ### Signing secrets (optional)
 
@@ -148,9 +153,14 @@ Triggers:
 With all four present the workflow decodes them into `$RUNNER_TEMP/release.jks`
 and `$RUNNER_TEMP/keystore.properties`, hands Gradle the properties file through
 `AGW_KEYSTORE_PROPERTIES` (the same override described in `Signing key`) and
-deletes both temporary files in a step marked `if: always()`. Without the secrets
-the workflow produces `*-community-debug.apk`. Secret values are never echoed
-into the log.
+deletes both temporary files in a step marked `if: always()`. The secrets are
+scoped to the two steps that need them (secret detection and the signed build),
+so the SDK setup and the unit-test run never receive them. Secret values are
+never echoed into the log.
+
+Without the secrets the workflow still produces `*-community-debug.apk` for the
+run, but **publication is refused** with an error: a version tag never publishes
+debuggable APKs.
 
 ### Artifact names
 

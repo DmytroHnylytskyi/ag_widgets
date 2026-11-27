@@ -69,13 +69,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    env:
-      # Every Gradle invocation passes -Pcommunity=true: no personal ntfy topic
-      # may end up in release assets.
-      ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
-      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+    # Signing secrets are injected per step (detect + build) instead of at job
+    # level, so the SDK setup and the unit-test run never receive them.
+    outputs:
+      signed: ${{ steps.secrets.outputs.signed }}
     steps:
       - uses: actions/checkout@v4
 
@@ -106,6 +103,11 @@ jobs:
 
       - name: Detect signing secrets
         id: secrets
+        env:
+          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           signed=false
           if [ -n "$ANDROID_KEYSTORE_B64" ] && [ -n "$ANDROID_KEYSTORE_PASSWORD" ] && [ -n "$ANDROID_KEY_ALIAS" ] && [ -n "$ANDROID_KEY_PASSWORD" ]; then
@@ -116,6 +118,13 @@ jobs:
       - name: Build signed release APKs
         if: steps.secrets.outputs.signed == 'true'
         working-directory: android
+        env:
+          # Every Gradle invocation passes -Pcommunity=true: no personal ntfy
+          # topic may end up in release assets.
+          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           ver="${RELEASE_TAG#v}"
           printf '%s' "$ANDROID_KEYSTORE_B64" | tr -d ' \t\r\n' | base64 -d > "$RUNNER_TEMP/release.jks"
@@ -172,18 +181,13 @@ jobs:
           fi
           echo "OK: local.properties contains no agw.topic"
 
-      - name: Warn on versionName mismatch
+      - name: Require versionName to match the tag
         run: |
           ver="${RELEASE_TAG#v}"
           gradle_version=$(grep -oP 'versionName\s*=\s*"\K[^"]+' android/app/build.gradle.kts | head -n 1 || true)
           if [ "$gradle_version" != "$ver" ]; then
-            msg="Release tag ${RELEASE_TAG} does not match versionName '${gradle_version}' in android/app/build.gradle.kts; APKs are built with versionName '${gradle_version}' because the Gradle file is intentionally unchanged in this PR."
-            echo "::warning::${msg}"
-            {
-              echo "### versionName mismatch"
-              echo
-              echo "$msg"
-            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::Release tag ${RELEASE_TAG} does not match versionName '${gradle_version}' in android/app/build.gradle.kts; bump versionName/versionCode in the release PR so the published APK reports its real version."
+            exit 1
           fi
 
       - name: Upload APKs
@@ -282,8 +286,14 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+      - name: Refuse to publish unsigned builds
+        if: (github.event_name == 'push' || inputs.publish == true) && needs.build-android.outputs.signed != 'true'
+        run: |
+          echo "::error::Refusing to publish '${RELEASE_TAG}': signing secrets are missing, so the APKs would be community debug builds."
+          exit 1
+
       - name: Publish GitHub Release
-        if: github.event_name == 'push' || inputs.publish == true
+        if: (github.event_name == 'push' || inputs.publish == true) && needs.build-android.outputs.signed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}

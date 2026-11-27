@@ -310,6 +310,57 @@ class ReleaseWorkflowStaticTests(unittest.TestCase):
             "secret cleanup step must 'rm -f' the keystore material",
         )
 
+    def test_signing_secrets_are_step_scoped(self) -> None:
+        job = _yaml_block(self._text(), "build-android")
+        self.assertTrue(job, "build-android job is missing")
+
+        # Job keys use four spaces, so a job-level ``env:`` has exactly this shape.
+        # Only the secret-detection step and the signed build may see the secrets.
+        self.assertIsNone(
+            re.search(r"^    env\s*:\s*$", job, re.MULTILINE),
+            "signing secrets must not be exposed at job level",
+        )
+        self.assertEqual(
+            job.count("secrets.ANDROID_KEYSTORE_B64"),
+            2,
+            "the keystore secret must only reach the detect and build steps",
+        )
+        self.assertIn(
+            "signed: ${{ steps.secrets.outputs.signed }}",
+            job,
+            "build-android must expose the signing state as a job output",
+        )
+
+    def test_unsigned_builds_are_never_published(self) -> None:
+        job = _yaml_block(self._text(), "publish-release")
+        self.assertTrue(job, "publish-release job is missing")
+
+        self.assertIn(
+            "Refuse to publish unsigned builds",
+            job,
+            "publishing must be refused when the APKs are unsigned",
+        )
+        self.assertRegex(
+            job,
+            r"needs\.build-android\.outputs\.signed\s*!=\s*'true'",
+            "a guard must catch an unsigned publish attempt",
+        )
+        self.assertRegex(
+            job,
+            r"if:.*needs\.build-android\.outputs\.signed\s*==\s*'true'",
+            "the publish step must require a signed build",
+        )
+
+    def test_version_mismatch_fails_the_build(self) -> None:
+        job = _yaml_block(self._text(), "build-android")
+        self.assertTrue(job, "build-android job is missing")
+
+        self.assertIn("Require versionName to match the tag", job, "versionName gate is missing")
+        self.assertIsNone(
+            re.search(r"^ *echo \"::warning::[^\n]*versionName", job, re.MULTILINE),
+            "a mismatched versionName must fail the build, not warn",
+        )
+
     def test_local_properties_only_holds_sdk_dir(self) -> None:
         text = self._text()
         lines = text.splitlines()
