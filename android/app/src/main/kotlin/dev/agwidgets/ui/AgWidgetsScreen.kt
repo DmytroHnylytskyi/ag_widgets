@@ -351,9 +351,18 @@ internal fun AgWidgetsScreen(
         if (isRefreshing) return
         val prevTopic = StatusStore.getTopic(context)
         if (mode != StatusStore.MODE_ZCODE && topic.trim() != prevTopic) {
-            StatusStore.setTopic(context, topic)
-            // Bucket ids from the previous topic must not fire alerts for the new one.
-            ResetAlertWorker.cancelAllResetAlerts(context)
+            val edited = topic.trim()
+            if (edited.isEmpty()) {
+                // ⟳ refreshes data; forgetting the channel is the explicit
+                // "save an empty topic" action (with its own confirmation).
+                topic = prevTopic
+            } else if (StatusStore.setTopic(context, edited)) {
+                // Bucket ids from the previous topic must not fire alerts for the new one.
+                ResetAlertWorker.cancelAllResetAlerts(context)
+            } else {
+                topic = prevTopic
+                statusMessage = s.chInvalidTopic
+            }
         }
         if (BuildConfig.ZCODE_ENABLED && zcodeToken.isNotBlank() &&
             zcodeToken.trim() != ZCodeStore.getToken(context)
@@ -709,29 +718,34 @@ internal fun AgWidgetsScreen(
                                     onSave = {
                                         val prevServer = StatusStore.getNtfyServer(context)
                                         val serverToSave = ntfyServer.trim().ifEmpty { E2eCrypto.DEFAULT_NTFY_SERVER }
-                                        if (!StatusStore.setNtfyServer(context, serverToSave)) {
-                                            statusMessage = s.dashServerHttpsRequired
-                                        } else {
-                                            val nextServer = StatusStore.getNtfyServer(context)
-                                            ntfyServer = nextServer
-                                            val prevTopic = StatusStore.getTopic(context)
-                                            val nextTopic = topic.trim()
-                                            StatusStore.setTopic(context, nextTopic)
-                                            // Alerts scheduled for the old topic or server are meaningless now.
-                                            if (nextTopic.isEmpty() || nextTopic != prevTopic || nextServer != prevServer) {
-                                                ResetAlertWorker.cancelAllResetAlerts(context)
+                                        // Read the previous topic before writing: the comparison below
+                                        // decides whether scheduled reset alerts are still valid.
+                                        val prevTopic = StatusStore.getTopic(context)
+                                        val nextTopic = topic.trim()
+                                        when {
+                                            !StatusStore.setNtfyServer(context, serverToSave) ->
+                                                statusMessage = s.dashServerHttpsRequired
+                                            !StatusStore.setTopic(context, nextTopic) ->
+                                                statusMessage = s.chInvalidTopic
+                                            else -> {
+                                                val nextServer = StatusStore.getNtfyServer(context)
+                                                ntfyServer = nextServer
+                                                // Alerts scheduled for the old topic or server are meaningless now.
+                                                if (nextTopic.isEmpty() || nextTopic != prevTopic || nextServer != prevServer) {
+                                                    ResetAlertWorker.cancelAllResetAlerts(context)
+                                                }
+                                                if (nextServer != prevServer && nextTopic == prevTopic && nextTopic.isNotEmpty()) {
+                                                    StatusStore.clearPcCache(context)
+                                                }
+                                                hasE2eKey = StatusStore.hasE2eKey(context)
+                                                syncPeriodicSchedule()
+                                                lastStatus = StatusStore.getMergedStatus(context)
+                                                lastError = StatusStore.getLastError(context)
+                                                nowMs = System.currentTimeMillis()
+                                                statusMessage =
+                                                    if (nextTopic.isEmpty()) s.dashTopicCleared else s.dashTopicSaved
+                                                scope.launch { runCatching { LimitsWidget().updateAll(context) } }
                                             }
-                                            if (nextServer != prevServer && nextTopic == prevTopic && nextTopic.isNotEmpty()) {
-                                                StatusStore.clearPcCache(context)
-                                            }
-                                            hasE2eKey = StatusStore.hasE2eKey(context)
-                                            syncPeriodicSchedule()
-                                            lastStatus = StatusStore.getMergedStatus(context)
-                                            lastError = StatusStore.getLastError(context)
-                                            nowMs = System.currentTimeMillis()
-                                            statusMessage =
-                                                if (nextTopic.isEmpty()) s.dashTopicCleared else s.dashTopicSaved
-                                            scope.launch { runCatching { LimitsWidget().updateAll(context) } }
                                         }
                                     },
                                     onRefresh = { refresh() },

@@ -273,6 +273,9 @@ object StatusStore {
             else -> builtInDefault.trim()
         }
         val trimmed = topic.trim()
+        // The topic is a URL path segment and a capability: a stray space or slash
+        // would silently break polling, so it is rejected before anything is written.
+        if (trimmed.isNotEmpty() && !TOPIC_PATTERN.matches(trimmed)) return false
         if (trimmed.isEmpty()) {
             preferences.edit()
                 .remove(KEY_TOPIC)
@@ -302,10 +305,17 @@ object StatusStore {
         return changed
     }
 
-    fun setTopic(context: Context, topic: String) {
-        synchronized(lock) {
-            applyTopicChange(prefs(context), topic, cipher)
-        }
+    /**
+     * Store [topic] (empty clears the channel).
+     *
+     * @return `false` when a non-empty topic does not match `[A-Za-z0-9_-]{1,64}`;
+     *   nothing is written in that case.
+     */
+    fun setTopic(context: Context, topic: String): Boolean = synchronized(lock) {
+        val trimmed = topic.trim()
+        if (trimmed.isNotEmpty() && !TOPIC_PATTERN.matches(trimmed)) return@synchronized false
+        applyTopicChange(prefs(context), topic, cipher)
+        true
     }
 
     /** Drops the PC-derived cache (status, error, notified resets) but keeps ZCode. */

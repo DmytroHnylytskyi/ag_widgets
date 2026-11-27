@@ -360,4 +360,31 @@ class StatusStoreTest {
         assertTrue(StatusStore.setE2eKey(prefs, e2eKey, FakeCipher))
         assertTrue(StatusStore.lostSecrets(prefs).isEmpty())
     }
+
+    @Test
+    fun invalidTopicIsRejectedAndNothingIsWritten() {
+        val prefs = populatedPrefs()
+        prefs.edit().putString("ntfy_e2e_key", "enc:$e2eKey").apply()
+        val before = prefs.getAll().toMap()
+
+        for (bad in listOf("bad topic", "with/slash", "x".repeat(65))) {
+            assertFalse(
+                "must reject '$bad'",
+                StatusStore.applyTopicChange(prefs, bad, FakeCipher, builtInDefault = ""),
+            )
+        }
+
+        assertEquals("a rejected topic must not touch the channel", before, prefs.getAll().toMap())
+        assertEquals(e2eKey, StatusStore.getE2eKey(prefs, FakeCipher))
+    }
+
+    @Test
+    fun validTopicIsAccepted() {
+        val prefs = populatedPrefs()
+
+        assertTrue(
+            StatusStore.applyTopicChange(prefs, "agw-New_topic-1", FakeCipher, builtInDefault = ""),
+        )
+        assertEquals("agw-New_topic-1", StatusStore.getTopic(prefs, FakeCipher))
+    }
 }

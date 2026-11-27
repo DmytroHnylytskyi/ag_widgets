@@ -266,6 +266,7 @@ data class ChannelStrings(
     val manualShow: String,
     val manualHide: String,
     val secretsLost: String,
+    val invalidTopic: String,
 )
 
 /** [title]. */
@@ -690,6 +691,7 @@ data class AgStrings(
     val chResetE2eTitle: String get() = channel.resetE2eTitle
     val chResetE2eBody: String get() = channel.resetE2eBody
     val chSecretsLost: String get() = channel.secretsLost
+    val chInvalidTopic: String get() = channel.invalidTopic
     val chScanQr: String get() = channel.scanQr
     val chSummaryE2e: String get() = channel.summaryE2e
     val chSummaryPlain: String get() = channel.summaryPlain
@@ -1096,6 +1098,7 @@ val RuStrings: AgStrings = AgStrings(
         manualShow = "Настроить вручную",
         manualHide = "Скрыть ручные настройки",
         secretsLost = "Секреты на телефоне не читаются: ключ Android был сброшен. Отсканируйте QR-код с ПК заново.",
+        invalidTopic = "Тема: только латиница, цифры, - и _, до 64 символов.",
     ),
     access = AccessStrings(
         description = "Прямой опрос zcode.z.ai каждые 15 минут: ваучеры на 300–500M токенов и баланс приходят даже при выключенном компьютере.",
@@ -1475,6 +1478,7 @@ val EnStrings: AgStrings = AgStrings(
         manualShow = "Configure manually",
         manualHide = "Hide manual settings",
         secretsLost = "Stored secrets are unreadable: the Android key was reset. Scan the QR code from the PC again.",
+        invalidTopic = "A topic may only use letters, digits, - and _, up to 64 characters.",
     ),
     access = AccessStrings(
         description = "Direct polling of zcode.z.ai every 15 minutes: coupons for 300–500M tokens and your balance arrive even when the computer is off.",
