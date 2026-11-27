@@ -160,8 +160,20 @@ npm start
 
 - **AG Widgets 1.0.0** (Antigravity + ZCode): [`AG-Widgets-1.0.0.apk`](https://github.com/DmytroHnylytskyi/ag_widgets/releases/latest/download/AG-Widgets-1.0.0.apk)
 - **AG Context 1.0.0** (только Antigravity): [`AG-Context-1.0.0.apk`](https://github.com/DmytroHnylytskyi/ag_widgets/releases/latest/download/AG-Context-1.0.0.apk)
+- **Windows portable**: `ag-widgets-<ver>-windows-x64.zip` со [страницы релизов](https://github.com/DmytroHnylytskyi/ag_widgets/releases/latest) — распакуйте в любое место и запустите `.\install.ps1`. Node.js **не требуется**: Electron уже внутри архива.
 
-К каждому APK в релизе приложен файл `.sha256` — сверьте контрольную сумму перед установкой. Оба APK — community-сборки без личного ntfy-топика.
+Portable ZIP — это тот же десктопный виджет, коллектор и хук Antigravity, что и при установке из клона, только без шага `npm ci`; ярлык **AG Widgets** создаёт установщик. Оба APK — community-сборки без личного ntfy-топика.
+
+К каждому артефакту в релизе приложен свой `<file>.sha256`, а также общий `SHA256SUMS.txt`. Сверьте сумму перед установкой:
+
+```powershell
+Get-FileHash -Algorithm SHA256 .\AG-Widgets-<ver>.apk
+Get-Content .\AG-Widgets-<ver>.apk.sha256
+```
+
+```bash
+sha256sum -c AG-Widgets-<ver>.apk.sha256
+```
 
 ### 3.2 Сборка community APK
 

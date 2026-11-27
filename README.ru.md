@@ -261,12 +261,26 @@ Antigravity CLI отдаёт точное `context_window_size`; statusLine кэ
 
 ### Скачать
 
-Обе сборки — подписанные community-APK без личного ntfy-топика. К релизу приложены контрольные суммы (файлы `.sha256`) — сверьте их перед установкой.
+Все файлы лежат на [странице релизов](https://github.com/DmytroHnylytskyi/ag_widgets/releases/latest). Обе сборки — подписанные community-APK без личного ntfy-топика; к каждому артефакту приложен свой `<file>.sha256`, а в релизе есть общий `SHA256SUMS.txt`.
 
-- **AG Widgets 1.0.0** (рекомендуется, Antigravity + ZCode):
+- **AG Widgets 1.0.0** — рекомендуется, `dev.agwidgets`, Antigravity + ZCode:
   https://github.com/DmytroHnylytskyi/ag_widgets/releases/latest/download/AG-Widgets-1.0.0.apk
-- **AG Context 1.0.0** (только Antigravity):
+- **AG Context 1.0.0** — `dev.agwidgets.context`, только Antigravity:
   https://github.com/DmytroHnylytskyi/ag_widgets/releases/latest/download/AG-Context-1.0.0.apk
+- **Windows portable** — `ag-widgets-<ver>-windows-x64.zip`: распакуйте и запустите `.\install.ps1`. Node.js **не требуется**, Electron уже внутри архива. Скачивать со [страницы релизов](https://github.com/DmytroHnylytskyi/ag_widgets/releases/latest).
+
+Сразу после установки APK сопрягите телефон с десктопом: откройте **Settings → Sync** в десктоп-виджете и отсканируйте QR-код приложением на телефоне. У сборок разные package id, поэтому они могут стоять одновременно.
+
+Сверьте контрольную сумму перед установкой:
+
+```powershell
+Get-FileHash -Algorithm SHA256 .\AG-Widgets-<ver>.apk
+Get-Content .\AG-Widgets-<ver>.apk.sha256
+```
+
+```bash
+sha256sum -c AG-Widgets-<ver>.apk.sha256
+```
 
 ### Сборка
 
