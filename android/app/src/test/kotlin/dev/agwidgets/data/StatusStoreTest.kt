@@ -306,4 +306,58 @@ class StatusStoreTest {
         const val DIRECT_JSON =
             """{"running": true, "coupon_state": "visible", "coupon_visible": true, "matched": "500M", "plan_id": "pro-2500", "checked_at": "2026-11-25T03:10:00+02:00"}"""
     }
+    /** A cipher whose key is gone: every stored blob is unreadable. */
+    private object BrokenCipher : SecretCipher {
+        override fun encrypt(plaintext: String): String = "enc:$plaintext"
+
+        override fun decrypt(stored: String): String? = null
+
+        override fun isEncrypted(stored: String): Boolean = stored.startsWith("enc:")
+    }
+
+    @Test
+    fun unreadableTopicIsReportedAsLostSecretNotAsUnconfigured() {
+        val prefs = FakeSharedPreferences()
+        prefs.edit().putString("ntfy_topic", "enc:agw-secret").apply()
+
+        val topic = StatusStore.getTopic(prefs, BrokenCipher, builtInDefault = "")
+
+        assertEquals("a lost secret must not surface as a topic", "", topic)
+        assertEquals(setOf(StatusStore.SECRET_TOPIC), StatusStore.lostSecrets(prefs))
+    }
+
+    @Test
+    fun readingAHealthyTopicClearsTheLostFlag() {
+        val prefs = populatedPrefs()
+        StatusStore.markSecretLost(prefs, StatusStore.SECRET_TOPIC)
+
+        assertEquals("agw-old", StatusStore.getTopic(prefs, FakeCipher))
+        assertTrue(StatusStore.lostSecrets(prefs).isEmpty())
+    }
+
+    @Test
+    fun aDeliberateClearIsNotDataLoss() {
+        val prefs = populatedPrefs()
+        StatusStore.markSecretLost(prefs, StatusStore.SECRET_TOPIC)
+        StatusStore.markSecretLost(prefs, StatusStore.SECRET_E2E)
+
+        StatusStore.applyTopicChange(prefs, "", FakeCipher, builtInDefault = "")
+
+        assertTrue(
+            "an explicit clear must not leave a scary warning behind",
+            StatusStore.lostSecrets(prefs).isEmpty(),
+        )
+    }
+
+    @Test
+    fun unreadableE2eKeyIsReportedAndANewKeyClearsIt() {
+        val prefs = FakeSharedPreferences()
+        prefs.edit().putString("ntfy_e2e_key", "enc:$e2eKey").apply()
+
+        assertNull(StatusStore.getE2eKey(prefs, BrokenCipher))
+        assertEquals(setOf(StatusStore.SECRET_E2E), StatusStore.lostSecrets(prefs))
+
+        assertTrue(StatusStore.setE2eKey(prefs, e2eKey, FakeCipher))
+        assertTrue(StatusStore.lostSecrets(prefs).isEmpty())
+    }
 }

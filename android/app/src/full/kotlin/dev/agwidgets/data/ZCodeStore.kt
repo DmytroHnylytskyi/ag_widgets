@@ -27,7 +27,14 @@ object ZCodeStore {
     fun getToken(context: Context): String = synchronized(lock) {
         val preferences = prefs(context)
         val stored = preferences.getString(KEY_TOKEN, null) ?: return@synchronized ""
-        val plaintext = cipher.decrypt(stored) ?: return@synchronized ""
+        val plaintext = cipher.decrypt(stored)
+        if (plaintext == null) {
+            // Stored token exists but the keystore key is gone: report it instead of
+            // pretending the user is simply signed out.
+            StatusStore.markSecretLost(preferences, StatusStore.SECRET_ZCODE)
+            return@synchronized ""
+        }
+        StatusStore.markSecretHealthy(preferences, StatusStore.SECRET_ZCODE)
         val trimmed = plaintext.trim()
         if (trimmed.isNotEmpty() && !cipher.isEncrypted(stored)) {
             runCatching {
@@ -40,18 +47,23 @@ object ZCodeStore {
     fun setToken(context: Context, token: String) {
         val trimmed = token.trim()
         synchronized(lock) {
-            val edit = prefs(context).edit()
+            val preferences = prefs(context)
+            val edit = preferences.edit()
             if (trimmed.isEmpty()) edit.remove(KEY_TOKEN) else edit.putString(KEY_TOKEN, cipher.encrypt(trimmed))
             edit.apply()
+            // A saved (or deliberately cleared) token is not a lost secret anymore.
+            StatusStore.markSecretHealthy(preferences, StatusStore.SECRET_ZCODE)
         }
     }
 
     fun clearToken(context: Context) {
         synchronized(lock) {
-            prefs(context).edit()
+            val preferences = prefs(context)
+            preferences.edit()
                 .remove(KEY_TOKEN)
                 .remove(KEY_DIRECT)
                 .apply()
+            StatusStore.markSecretHealthy(preferences, StatusStore.SECRET_ZCODE)
         }
     }
 

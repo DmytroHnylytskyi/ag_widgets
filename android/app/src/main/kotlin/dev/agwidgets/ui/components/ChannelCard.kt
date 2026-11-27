@@ -50,6 +50,7 @@ internal fun ChannelCard(
     onScanQr: () -> Unit,
     onPasteCode: () -> Unit,
     onResetE2eKey: () -> Unit,
+    secretsLost: Boolean = false,
 ) {
     val colors = AgTheme.colors
     val s = LocalStrings.current
@@ -74,6 +75,16 @@ internal fun ChannelCard(
                 else -> colors.muted
             },
         )
+
+        if (secretsLost) {
+            // A blob exists but the keystore key is gone. Saying "not configured"
+            // would make the user look for a setting instead of re-pairing.
+            Text(
+                text = s.chSecretsLost,
+                style = AgType.caption,
+                color = colors.riskStrong,
+            )
+        }
 
         if (channelConfigured) {
             val summary = s.fill(

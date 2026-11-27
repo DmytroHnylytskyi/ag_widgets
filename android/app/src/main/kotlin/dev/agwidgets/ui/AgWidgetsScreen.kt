@@ -744,6 +744,7 @@ internal fun AgWidgetsScreen(
                                         statusMessage = s.dashE2eKeyReset
                                         scope.launch { runCatching { LimitsWidget().updateAll(context) } }
                                     },
+                                    secretsLost = StatusStore.hasLostSecrets(context),
                                 )
                             }
                             if (BuildConfig.ZCODE_ENABLED) {

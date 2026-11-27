@@ -34,11 +34,18 @@ object StatusStore {
     private const val KEY_LANGUAGE = "app_language"
     private const val KEY_MODE = "mode"
     private const val KEY_COUPON_NOTIFIED = "coupon_notified"
+    /** Names of secrets whose stored blob could not be decrypted (keystore reset). */
+    private const val KEY_SECRETS_LOST = "secrets_lost"
 
     private const val MAX_NOTIFIED_RESETS = 30
     private const val RESET_ENTRY_SEPARATOR = "\n"
 
     private val TOPIC_PATTERN = Regex("^[A-Za-z0-9_-]{1,64}$")
+
+    /** Identifiers for [KEY_SECRETS_LOST]; the names are shown nowhere, only counted. */
+    internal const val SECRET_TOPIC = "topic"
+    internal const val SECRET_E2E = "e2e"
+    internal const val SECRET_ZCODE = "zcode"
 
     const val MODE_UNSET = "unset"
     const val MODE_PC = "pc"
@@ -53,23 +60,67 @@ object StatusStore {
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
+    /**
+     * Record that the blob for [name] exists but cannot be decrypted.
+     *
+     * A missing keystore key used to be indistinguishable from "the user cleared
+     * the channel": [getTopic] returned an empty string either way, so the UI
+     * looked merely unconfigured while the app kept the PC mode and polled
+     * nothing. Callers can now show an honest "scan the QR again" state.
+     */
+    internal fun markSecretLost(preferences: SharedPreferences, name: String) {
+        val current = preferences.getStringSet(KEY_SECRETS_LOST, emptySet()).orEmpty()
+        if (name in current) return
+        preferences.edit().putStringSet(KEY_SECRETS_LOST, current + name).apply()
+    }
+
+    /** Forget [name] once its secret is written again (or deliberately cleared). */
+    internal fun markSecretHealthy(preferences: SharedPreferences, name: String) {
+        val current = preferences.getStringSet(KEY_SECRETS_LOST, emptySet()).orEmpty()
+        if (name !in current) return
+        preferences.edit().putStringSet(KEY_SECRETS_LOST, current - name).apply()
+    }
+
+    /** Secrets that exist on disk but cannot be decrypted. Empty in the happy path. */
+    fun lostSecrets(context: Context): Set<String> = lostSecrets(prefs(context))
+
+    internal fun lostSecrets(preferences: SharedPreferences): Set<String> =
+        preferences.getStringSet(KEY_SECRETS_LOST, emptySet()).orEmpty().toSet()
+
+    fun hasLostSecrets(context: Context): Boolean = lostSecrets(context).isNotEmpty()
+
     fun getTopic(context: Context): String = synchronized(lock) {
-        val preferences = prefs(context)
+        getTopic(prefs(context), cipher)
+    }
+
+    /** Injectable seam for local JVM tests (the real cipher needs an Android runtime). */
+    internal fun getTopic(
+        preferences: SharedPreferences,
+        secretCipher: SecretCipher,
+        builtInDefault: String = BuildConfig.AGW_TOPIC,
+    ): String {
         val stored = preferences.getString(KEY_TOPIC, null)
         if (stored != null) {
-            val plaintext = cipher.decrypt(stored) ?: return@synchronized ""
+            val plaintext = secretCipher.decrypt(stored)
+            if (plaintext == null) {
+                // The blob exists but the keystore key is gone: this is data loss,
+                // not an unconfigured channel (see markSecretLost).
+                markSecretLost(preferences, SECRET_TOPIC)
+                return ""
+            }
+            markSecretHealthy(preferences, SECRET_TOPIC)
             val trimmed = plaintext.trim()
-            if (trimmed.isNotEmpty() && !cipher.isEncrypted(stored)) {
+            if (trimmed.isNotEmpty() && !secretCipher.isEncrypted(stored)) {
                 // Transparent migration of topics written by older releases.
                 runCatching {
-                    preferences.edit().putString(KEY_TOPIC, cipher.encrypt(trimmed)).apply()
+                    preferences.edit().putString(KEY_TOPIC, secretCipher.encrypt(trimmed)).apply()
                 }.onFailure { safeWarn("StatusStore", "Failed to migrate topic to encrypted storage", it) }
             }
-            return@synchronized trimmed
+            return trimmed
         }
         // The user explicitly cleared the topic: never resurrect the baked-in default.
-        if (preferences.getBoolean(KEY_TOPIC_CLEARED, false)) return@synchronized ""
-        BuildConfig.AGW_TOPIC
+        if (preferences.getBoolean(KEY_TOPIC_CLEARED, false)) return ""
+        return builtInDefault
     }
 
     // ------------------------------------------------------------------
@@ -101,7 +152,12 @@ object StatusStore {
     internal fun getE2eKey(preferences: SharedPreferences, secretCipher: SecretCipher): String? =
         runCatching {
             val stored = preferences.getString(KEY_NTFY_E2E_KEY, null) ?: return@runCatching null
-            val plaintext = secretCipher.decrypt(stored) ?: return@runCatching null
+            val plaintext = secretCipher.decrypt(stored)
+            if (plaintext == null) {
+                markSecretLost(preferences, SECRET_E2E)
+                return@runCatching null
+            }
+            markSecretHealthy(preferences, SECRET_E2E)
             plaintext.trim().takeIf { E2eCrypto.isValidKey(it) }
         }.getOrNull()
 
@@ -123,11 +179,13 @@ object StatusStore {
     ): Boolean {
         if (keyB64 == null) {
             preferences.edit().remove(KEY_NTFY_E2E_KEY).apply()
+            markSecretHealthy(preferences, SECRET_E2E)
             return true
         }
         val trimmed = keyB64.trim()
         if (!E2eCrypto.isValidKey(trimmed)) return false
         preferences.edit().putString(KEY_NTFY_E2E_KEY, secretCipher.encrypt(trimmed)).apply()
+        markSecretHealthy(preferences, SECRET_E2E)
         return true
     }
 
@@ -225,12 +283,16 @@ object StatusStore {
                 .remove(KEY_LAST_ERROR)
                 .remove(KEY_NOTIFIED_RESETS)
                 .apply()
+            // A deliberate clear is not data loss.
+            markSecretHealthy(preferences, SECRET_TOPIC)
+            markSecretHealthy(preferences, SECRET_E2E)
             return true
         }
         val changed = trimmed != previousTopic
         val edit = preferences.edit()
             .putString(KEY_TOPIC, cipher.encrypt(trimmed))
             .putBoolean(KEY_TOPIC_CLEARED, false)
+        markSecretHealthy(preferences, SECRET_TOPIC)
         if (changed) {
             edit.remove(KEY_LAST_JSON)
                 .remove(KEY_LAST_ERROR)
