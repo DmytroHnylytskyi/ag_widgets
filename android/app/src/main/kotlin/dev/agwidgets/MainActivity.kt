@@ -87,7 +87,7 @@ class MainActivity : ComponentActivity() {
                             languageMode = AppLanguage.normalize(mode)
                         },
                         pendingPairingUri = pendingPairingUri,
-                        onConsumePairingUri = { pendingPairingUri = null },
+                        onConsumePairingUri = { consumePairing() },
                     )
                 }
             }
@@ -101,14 +101,37 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
+     * Handle the pairing dialog once and forget the link.
+     *
+     * The `VIEW` intent stays attached to the Activity, and `onCreate` reads it
+     * again after every recreation (rotation, theme/language/font-size change,
+     * process restore) — the user saw the same "connect this PC?" dialog again
+     * long after it had been answered. Replacing the intent with a plain launch
+     * one is the only way to tell the system this launch is no longer a pairing
+     * request, because the intent is restored independently of instance state.
+     */
+    private fun consumePairing() {
+        pendingPairingUri = null
+        setIntent(Intent(this, MainActivity::class.java))
+    }
+
+    /**
      * Only a real `agw://pair` VIEW link is a pairing request; anything else
      * (launcher intents, a forged scheme/host, no data) is ignored.
      */
     private fun extractPairingUri(intent: Intent?): String? {
-        if (intent?.action != Intent.ACTION_VIEW) return null
-        val data = intent.data ?: return null
-        if (!data.scheme.equals("agw", ignoreCase = true)) return null
-        if (!data.host.equals("pair", ignoreCase = true)) return null
+        val data = intent?.data
+        if (!isPairingLink(intent?.action, data?.scheme, data?.host)) return null
         return data.toString()
     }
 }
+
+/**
+ * Pure check for `agw://pair` VIEW links, kept outside [MainActivity] so a plain
+ * JVM test can cover it without Robolectric.
+ */
+internal fun isPairingLink(action: String?, scheme: String?, host: String?): Boolean =
+    action == Intent.ACTION_VIEW &&
+        scheme?.equals("agw", ignoreCase = true) == true &&
+        host?.equals("pair", ignoreCase = true) == true
+
