@@ -61,10 +61,13 @@ class KeystoreSecretCipher(
         }
     }
 
-    private fun secretKey(): SecretKey {
+    private fun secretKey(): SecretKey = SecretKeyCache.getOrLoad(alias) {
         val store = KeyStore.getInstance(KEYSTORE).apply { load(null) }
-        (store.getEntry(alias, null) as? KeyStore.SecretKeyEntry)?.let { return it.secretKey }
+        (store.getEntry(alias, null) as? KeyStore.SecretKeyEntry)?.secretKey
+            ?: generateKey()
+    }
 
+    private fun generateKey(): SecretKey {
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, KEYSTORE)
         generator.init(
             KeyGenParameterSpec.Builder(
