@@ -496,5 +496,38 @@ class EnsureNtfyTopicTests(_IsolatedTestCase):
         self.assertTrue(config["keep"])
 
 
+# UTF-8 byte-order mark, spelled out so the test file itself stays ASCII.
+BOM_BYTES = bytes([0xEF, 0xBB, 0xBF])
+
+
+class BomJsonTests(unittest.TestCase):
+    """A BOM must not make Python disagree with Electron about the same file."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.path = Path(self._tmp.name) / "config.json"
+
+    def test_read_json_strict_accepts_a_byte_order_mark(self):
+        self.path.write_bytes(BOM_BYTES + b'{"ntfy_server": "https://relay.example.com"}')
+
+        self.assertEqual(
+            paths.read_json_strict(self.path),
+            {"ntfy_server": "https://relay.example.com"},
+        )
+
+    def test_read_json_accepts_a_byte_order_mark(self):
+        self.path.write_bytes(BOM_BYTES + b'{"a": 1}')
+
+        self.assertEqual(paths.read_json(self.path), {"a": 1})
+
+    def test_a_bom_only_file_is_reported_as_empty(self):
+        self.path.write_bytes(BOM_BYTES)
+
+        with self.assertRaises(paths.ConfigReadError):
+            paths.read_json_strict(self.path)
+
+
 if __name__ == "__main__":
     unittest.main()
+

@@ -186,9 +186,14 @@ def file_lock(lock_path: Path, timeout: float = LOCK_TIMEOUT_SEC) -> Iterator[No
 
 
 def read_json(path: Path) -> dict[str, Any] | None:
-    """Read a JSON object, returning ``None`` for missing or malformed files."""
+    """Read a JSON object, returning ``None`` for missing or malformed files.
+
+    ``utf-8-sig`` accepts a byte-order mark: Node's ``readJson`` trims it, and a
+    file edited in a BOM-writing editor must not make Python and Electron
+    disagree about the same document.
+    """
     try:
-        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        data = json.loads(Path(path).read_text(encoding="utf-8-sig"))
     except (OSError, ValueError):
         return None
     return data if isinstance(data, dict) else None
@@ -203,7 +208,9 @@ def read_json_strict(path: Path) -> dict[str, Any] | None:
     """
     path = Path(path)
     try:
-        raw = path.read_text(encoding="utf-8")
+        # utf-8-sig: a BOM is whitespace to every other JSON reader, including the
+        # Electron side; treating it as "not valid JSON" stopped the collector.
+        raw = path.read_text(encoding="utf-8-sig")
     except FileNotFoundError:
         return None
     except OSError as error:
