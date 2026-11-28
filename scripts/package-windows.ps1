@@ -79,11 +79,24 @@ $ExcludedFileNames = @(
     "local.properties",
     "keystore.properties",
     "status.json",
-    "context.json"
+    "context.json",
+    ".env",
+    ".npmrc",
+    ".git-credentials",
+    "credentials.json"
 )
 
+# Name prefixes for environment files (".env", ".env.local", ".env.production").
+$ExcludedNamePrefixes = @(".env.")
+
 # File extensions that never go into the archive (".lock" files are kept).
-$ExcludedExtensions = @(".pyc", ".pyo", ".log", ".tmp", ".jks")
+$ExcludedExtensions = @(".pyc", ".pyo", ".log", ".tmp", ".jks", ".pem", ".key", ".p12", ".pfx")
+
+# Only the Electron runtime is needed at run time. Packing all of node_modules
+# dragged in every dev dependency and local experiment (~15 MB) and made the
+# archive non-reproducible; start-widget.vbs and install.ps1 only look for
+# desktop/node_modules/electron/dist/electron.exe.
+$NodeModulesRuntimePrefix = "desktop/node_modules/electron/dist/"
 
 $ExcludedSegments = @("__pycache__", ".git", ".github", "android", "tests")
 
@@ -101,6 +114,15 @@ function Test-ExcludedRelativePath([string]$RelativePath) {
     if ($normalized -match '(^|/)node_modules/\.cache(/|$)') {
         return $true
     }
+    if ($segments -contains "node_modules") {
+        $isElectronRuntime = $normalized.StartsWith(
+            $NodeModulesRuntimePrefix,
+            [System.StringComparison]::OrdinalIgnoreCase
+        )
+        if (-not $isElectronRuntime) {
+            return $true
+        }
+    }
     foreach ($prefix in $ExcludedDirectoryPrefixes) {
         if ($normalized -eq $prefix -or $normalized.StartsWith($prefix + "/", [System.StringComparison]::OrdinalIgnoreCase)) {
             return $true
@@ -110,6 +132,11 @@ function Test-ExcludedRelativePath([string]$RelativePath) {
     $leaf = $segments[$segments.Length - 1]
     foreach ($name in $ExcludedFileNames) {
         if ($leaf -ieq $name) {
+            return $true
+        }
+    }
+    foreach ($prefix in $ExcludedNamePrefixes) {
+        if ($leaf.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
             return $true
         }
     }
@@ -331,8 +358,14 @@ try {
     }
 
     $forbiddenSegments = @(".git", "android", "tests", ".github", "__pycache__")
-    $forbiddenFileNames = @("secrets.json", "config.json", "local.properties", "keystore.properties", "status.json", "context.json")
-    $forbiddenSuffixes = @(".pyc", ".pyo", ".log", ".tmp", ".jks")
+    $forbiddenFileNames = @(
+        "secrets.json", "config.json", "local.properties", "keystore.properties",
+        "status.json", "context.json", ".env", ".npmrc", ".git-credentials", "credentials.json"
+    )
+    $forbiddenNamePrefixes = @(".env.")
+    $forbiddenSuffixes = @(".pyc", ".pyo", ".log", ".tmp", ".jks", ".pem", ".key", ".p12", ".pfx")
+    $allowedNodeModulesPrefix = "$stageName/desktop/node_modules/electron/dist/"
+
     $violations = @()
     foreach ($entryName in $entries) {
         $segments = $entryName -split '/'
@@ -349,6 +382,29 @@ try {
                 if ($leaf -ieq $forbiddenName) {
                     $isForbidden = $true
                     break
+                }
+            }
+        }
+        if (-not $isForbidden) {
+            foreach ($prefix in $forbiddenNamePrefixes) {
+                if ($leaf.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+                    $isForbidden = $true
+                    break
+                }
+            }
+        }
+        if (-not $isForbidden -and ($segments -contains "node_modules")) {
+            $isFileEntry = -not $entryName.EndsWith("/")
+            if ($isFileEntry) {
+                if (-not $entryName.StartsWith($allowedNodeModulesPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+                    $isForbidden = $true
+                }
+            } else {
+                # Directory entries are fine only when they are ancestors of the
+                # runtime path (store them so the ZIP keeps its structure).
+                $trimmedEntry = $entryName.TrimEnd("/")
+                if (-not $allowedNodeModulesPrefix.StartsWith($trimmedEntry + "/", [System.StringComparison]::OrdinalIgnoreCase)) {
+                    $isForbidden = $true
                 }
             }
         }

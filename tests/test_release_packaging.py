@@ -537,6 +537,11 @@ class WindowsPackagerStaticTests(unittest.TestCase):
             "android",
             "tests",
             "__pycache__",
+            ".env",
+            ".npmrc",
+            ".pem",
+            ".key",
+            "desktop/node_modules/electron/dist/",
         ):
             self.assertIn(marker, text, f"blacklist entry {marker!r} is missing")
 
@@ -658,6 +663,16 @@ def _build_synthetic_repo(base: Path) -> Path:
         repo / "desktop" / "node_modules" / "electron" / "dist" / "electron.exe",
         b"MZ synthetic electron stub\n",
     )
+    # Dev leftovers and secret-shaped files that must never be packed.
+    _write(repo / "desktop" / "node_modules" / "leftover" / "index.js", "// dev leftover\n")
+    _write(repo / "desktop" / "node_modules" / "electron" / "package.json", "{}")
+    _write(repo / "desktop" / ".env", "TOKEN=secret\n")
+    _write(repo / "desktop" / ".env.local", "TOKEN=secret\n")
+    _write(repo / "desktop" / ".npmrc", "_authToken=secret\n")
+    _write(repo / "desktop" / ".git-credentials", "https://user:secret@github.com\n")
+    _write(repo / "desktop" / "credentials.json", "{}\n")
+    _write(repo / "desktop" / "certs" / "relay.pem", "cert\n")
+    _write(repo / "desktop" / "certs" / "relay.key", "key\n")
     _write(repo / "android" / "local.properties", "sdk.dir=/synthetic\n")
     _write(repo / "tests" / "test_x.py", "# excluded test\n")
     _write(repo / ".git" / "HEAD", "ref: refs/heads/main\n")
@@ -782,14 +797,37 @@ class WindowsPackagerRuntimeTests(unittest.TestCase):
                         break
             self.assertEqual(sorted(set(leaks)), [], f"blacklisted paths leaked into the ZIP: {leaks}")
 
-            forbidden_names = {"secrets.json", "local.properties"}
+            forbidden_names = {
+                "secrets.json",
+                "local.properties",
+                ".env",
+                ".env.local",
+                ".npmrc",
+                ".git-credentials",
+                "credentials.json",
+            }
             for name in names:
                 base_name = name.rsplit("/", 1)[-1]
                 self.assertNotIn(base_name, forbidden_names, f"forbidden file in ZIP: {name!r}")
                 self.assertFalse(
-                    base_name.endswith((".pyc", ".log", ".tmp")),
-                    f"temporary or compiled file leaked into the ZIP: {name!r}",
+                    base_name.endswith((".pyc", ".log", ".tmp", ".pem", ".key")),
+                    f"temporary, compiled or secret file leaked into the ZIP: {name!r}",
                 )
+
+            node_modules_files = [
+                name for name in names if "/node_modules/" in name and not name.endswith("/")
+            ]
+            self.assertTrue(node_modules_files, "the archive must bundle the Electron runtime")
+            outside_runtime = [
+                name
+                for name in node_modules_files
+                if not name.startswith(f"{top}/desktop/node_modules/electron/dist/")
+            ]
+            self.assertEqual(
+                outside_runtime,
+                [],
+                f"node_modules files outside electron/dist leaked into the ZIP: {outside_runtime}",
+            )
 
             portable_name = f"{top}/PORTABLE.txt"
             self.assertIn(portable_name, names, "PORTABLE.txt is missing from the archive")
