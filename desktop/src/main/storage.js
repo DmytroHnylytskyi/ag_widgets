@@ -88,6 +88,39 @@ function parseAnnotation(text) {
 }
 
 /**
+ * Parsed annotation per file, keyed by path and invalidated by `(mtime, size)`.
+ *
+ * Antigravity annotations only change when a chat is opened or used, but
+ * `readAllState()` runs on every 5 s poll, on every context/status write and on
+ * every fs event — and used to re-read and re-parse *all* `*.pbtxt` files each
+ * time. Measured: 1000 chats cost ~119 ms of synchronous main-thread work per
+ * push (5000 → 624 ms), which stalls dragging and IPC. A stat per file is cheap;
+ * a read plus regex is not.
+ */
+const annotationCache = new Map();
+
+/** Drop the parse cache (tests, and after an annotations directory change). */
+function clearAnnotationCache() {
+  annotationCache.clear();
+}
+
+/** Parsed annotation for one file, reusing the cached entry when it is unchanged. */
+function readAnnotationCached(filePath, mtimeMs, size) {
+  const cached = annotationCache.get(filePath);
+  if (cached && cached.mtimeMs === mtimeMs && cached.size === size) return cached;
+
+  const parsed = parseAnnotation(fs.readFileSync(filePath, 'utf8'));
+  const entry = {
+    mtimeMs,
+    size,
+    title: parsed.title,
+    viewedAt: parsed.viewedAt,
+  };
+  annotationCache.set(filePath, entry);
+  return entry;
+}
+
+/**
  * Read every annotation once and derive both derived views from that pass.
  *
  * `activeChat` is the file with the latest `last_user_view_time`; the mtime only
@@ -107,13 +140,15 @@ function scanAnnotations(dir = ANNOTATIONS_DIR) {
   }
 
   let best = null;
+  const seen = new Set();
   for (const entry of entries) {
     if (!entry.isFile() || !entry.name.endsWith('.pbtxt')) continue;
     const filePath = path.join(dir, entry.name);
     try {
-      const mtimeMs = fs.statSync(filePath).mtimeMs;
-      const parsed = parseAnnotation(fs.readFileSync(filePath, 'utf8'));
+      const stat = fs.statSync(filePath);
+      const parsed = readAnnotationCached(filePath, stat.mtimeMs, stat.size);
       const id = entry.name.replace(/\.pbtxt$/, '');
+      seen.add(filePath);
       const trimmedTitle = typeof parsed.title === 'string' ? parsed.title.trim() : '';
       if (trimmedTitle) chatTitles[id] = trimmedTitle;
 
@@ -121,7 +156,7 @@ function scanAnnotations(dir = ANNOTATIONS_DIR) {
         id,
         title: parsed.title,
         viewedAt: parsed.viewedAt,
-        mtimeMs,
+        mtimeMs: parsed.mtimeMs,
       };
       if (
         !best ||
@@ -132,6 +167,13 @@ function scanAnnotations(dir = ANNOTATIONS_DIR) {
       }
     } catch {
       // A single unreadable annotation must not hide the other chats.
+    }
+  }
+
+  // Forget files that disappeared so the cache cannot grow without bound.
+  if (annotationCache.size > seen.size) {
+    for (const key of annotationCache.keys()) {
+      if (!seen.has(key)) annotationCache.delete(key);
     }
   }
 
@@ -292,6 +334,7 @@ module.exports = {
   readJson,
   writeJsonAtomic,
   parseAnnotation,
+  clearAnnotationCache,
   scanAnnotations,
   detectActiveChat,
   readActiveChat,

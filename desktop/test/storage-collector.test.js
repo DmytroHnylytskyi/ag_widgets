@@ -441,3 +441,43 @@ test('buildMenuTemplate routes checkbox clicks to injected handlers', () => {
 test.after(() => {
   fs.rmSync(tmpRoot, { recursive: true, force: true });
 });
+
+test('a repeated scan re-reads only the annotations that changed', () => {
+  const dir = makeDir('annotations-cache');
+  const nowMs = Date.now();
+  for (let index = 0; index < 20; index += 1) {
+    writeAnnotation(dir, `chat-${index}.pbtxt`, {
+      title: `Chat ${index}`,
+      viewedSeconds: 1700000000 + index,
+      mtimeMs: nowMs - 60_000,
+    });
+  }
+  storage.clearAnnotationCache();
+
+  const fs = require('fs');
+  const original = fs.readFileSync;
+  let reads = 0;
+  fs.readFileSync = function countingRead(...args) {
+    reads += 1;
+    return original.apply(this, args);
+  };
+  try {
+    storage.scanAnnotations(dir);
+    assert.equal(reads, 20, 'the first scan reads every annotation');
+
+    storage.scanAnnotations(dir);
+    assert.equal(reads, 20, 'an unchanged scan must not re-read a single file');
+
+    writeAnnotation(dir, 'chat-7.pbtxt', {
+      title: 'Chat 7 renamed',
+      viewedSeconds: 1700000000 + 7,
+      mtimeMs: nowMs,
+    });
+    const result = storage.scanAnnotations(dir);
+    assert.equal(reads, 21, 'only the changed file is re-read');
+    assert.equal(result.chatTitles['chat-7'], 'Chat 7 renamed');
+  } finally {
+    fs.readFileSync = original;
+  }
+});
+
