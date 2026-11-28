@@ -118,6 +118,38 @@ outside the repository, and never attach it to a public release:
 3. Copy the APK to `%LOCALAPPDATA%\ag-widgets\`.
 4. Remove `agw.topic` from `local.properties` immediately afterwards.
 
+## Local release (the current policy)
+
+The signing key is **not** stored in GitHub. This repository is public, and a
+key that can sign updates for every installed copy is worth more than the
+convenience of a fully automated publish: anyone who could push a workflow
+would be able to read it. So releases are built here and published from a
+trusted checkout:
+
+```powershell
+# dry run: build both flavors, print the signing certificate and the hashes
+powershell -ExecutionPolicy Bypass -File .\scripts\release-local.ps1 -Version v1.1.0 -DryRun
+
+# real run: tag, push the tag, create the release and upload every asset
+powershell -ExecutionPolicy Bypass -File .\scripts\release-local.ps1 -Version v1.1.0
+```
+
+The script refuses to continue when the tag does not match `versionName`, when
+the tree is dirty, when the tag already exists, when the keystore is missing or
+when the built APK is unsigned. It writes `AG-Widgets-<ver>.apk`,
+`AG-Context-<ver>.apk`, one `.sha256` per file and `SHA256SUMS.txt` into `dist/`,
+then publishes exactly those files.
+
+`.github/workflows/release.yml` stays in the repository as a **verification
+build**: it runs the tests, builds both flavors and the portable ZIP, and then
+refuses to publish because the signing secrets are absent. That is intentional —
+a `v*` tag must never publish debuggable APKs.
+
+## Automated GitHub Releases (not used by default)
+
+The workflow below can publish on its own if the four signing secrets are ever
+added. For this project they are deliberately omitted (see above).
+
 ## Automated GitHub Releases
 
 `.github/workflows/release.yml` builds and publishes every asset in one run:

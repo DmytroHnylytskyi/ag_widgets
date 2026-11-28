@@ -225,5 +225,34 @@ class DocumentationIntegrityTests(unittest.TestCase):
         )
 
 
+class ReleaseVersionTests(unittest.TestCase):
+    """Download links must name the version this build actually is.
+
+    The release is built locally and published by hand, so nothing in CI would
+    notice that ``releases/latest/download`` now points at a release whose asset
+    names differ. The Gradle ``versionName`` is the single source of truth: bump
+    it and every documented file name has to follow, or this test fails.
+    """
+
+    def _gradle_version(self) -> str:
+        gradle = (ROOT / "android" / "app" / "build.gradle.kts").read_text(encoding="utf-8")
+        match = re.search(r'versionName\s*=\s*"([^"]+)"', gradle)
+        self.assertIsNotNone(match, "android/app/build.gradle.kts has no versionName")
+        return match.group(1)
+
+    def test_documented_apk_names_match_the_gradle_version(self):
+        version = self._gradle_version()
+        for relative in FLAVOR_DOCS + ("docs/AGENT_INSTALL.md",):
+            text = (ROOT / relative).read_text(encoding="utf-8")
+            for product in ("AG-Widgets", "AG-Context"):
+                found = set(re.findall(rf"{product}-([0-9A-Za-z][0-9A-Za-z.\-]*)\.apk", text))
+                self.assertEqual(
+                    found,
+                    {version},
+                    f"{relative}: {product} links must name {version}, found {sorted(found)}",
+                )
+
+
+
 if __name__ == "__main__":
     unittest.main()

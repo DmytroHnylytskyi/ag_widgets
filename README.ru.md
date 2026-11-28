@@ -263,10 +263,10 @@ Antigravity CLI отдаёт точное `context_window_size`; statusLine кэ
 
 Все файлы лежат на [странице релизов](https://github.com/DmytroHnylytskyi/ag_widgets/releases/latest). Обе сборки — подписанные community-APK без личного ntfy-топика; к каждому артефакту приложен свой `<file>.sha256`, а в релизе есть общий `SHA256SUMS.txt`.
 
-- **AG Widgets 1.0.0** — рекомендуется, `dev.agwidgets`, Antigravity + ZCode:
-  https://github.com/DmytroHnylytskyi/ag_widgets/releases/latest/download/AG-Widgets-1.0.0.apk
-- **AG Context 1.0.0** — `dev.agwidgets.context`, только Antigravity:
-  https://github.com/DmytroHnylytskyi/ag_widgets/releases/latest/download/AG-Context-1.0.0.apk
+- **AG Widgets 1.1.0** — рекомендуется, `dev.agwidgets`, Antigravity + ZCode:
+  https://github.com/DmytroHnylytskyi/ag_widgets/releases/latest/download/AG-Widgets-1.1.0.apk
+- **AG Context 1.1.0** — `dev.agwidgets.context`, только Antigravity:
+  https://github.com/DmytroHnylytskyi/ag_widgets/releases/latest/download/AG-Context-1.1.0.apk
 - **Windows portable** — `ag-widgets-<ver>-windows-x64.zip`: распакуйте и запустите `.\install.ps1`. Node.js **не требуется**, Electron уже внутри архива. Скачивать со [страницы релизов](https://github.com/DmytroHnylytskyi/ag_widgets/releases/latest).
 
 Сразу после установки APK сопрягите телефон с десктопом: откройте **Settings → Sync** в десктоп-виджете и отсканируйте QR-код приложением на телефоне. У сборок разные package id, поэтому они могут стоять одновременно.

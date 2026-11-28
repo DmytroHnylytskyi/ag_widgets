@@ -263,10 +263,10 @@ The Antigravity CLI reports the exact `context_window_size`; the status line cac
 
 All assets live on the [releases page](https://github.com/DmytroHnylytskyi/ag_widgets/releases/latest). Both APKs are signed community builds with no personal ntfy topic; each artifact comes with its own `<file>.sha256` and the release also carries a combined `SHA256SUMS.txt`.
 
-- **AG Widgets 1.0.0** — recommended, `dev.agwidgets`, Antigravity + ZCode:
-  https://github.com/DmytroHnylytskyi/ag_widgets/releases/latest/download/AG-Widgets-1.0.0.apk
-- **AG Context 1.0.0** — `dev.agwidgets.context`, Antigravity only:
-  https://github.com/DmytroHnylytskyi/ag_widgets/releases/latest/download/AG-Context-1.0.0.apk
+- **AG Widgets 1.1.0** — recommended, `dev.agwidgets`, Antigravity + ZCode:
+  https://github.com/DmytroHnylytskyi/ag_widgets/releases/latest/download/AG-Widgets-1.1.0.apk
+- **AG Context 1.1.0** — `dev.agwidgets.context`, Antigravity only:
+  https://github.com/DmytroHnylytskyi/ag_widgets/releases/latest/download/AG-Context-1.1.0.apk
 - **Windows portable** — `ag-widgets-<ver>-windows-x64.zip`: unzip, run `.\install.ps1`. Node.js is **not** required, Electron ships inside the archive. Take it from the [releases page](https://github.com/DmytroHnylytskyi/ag_widgets/releases/latest).
 
 Right after installing an APK, pair the phone with the desktop: open **Settings → Sync** in the desktop widget and scan the QR code with the phone app. Both builds use different package ids, so they can be installed side by side.

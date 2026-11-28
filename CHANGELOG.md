@@ -41,6 +41,30 @@ Docs and CI:
 - EN/RU installation guides, an AI-agent install runbook, and docs tests that
   guard links, doctor coverage and secrets.
 
+Fixed (each one is documented with root cause and rejected alternatives in
+`docs/BUGFIXES.md`):
+
+- Duplicate ntfy publishes when the sidecar and a manual refresh overlapped;
+  collector errors are reported instead of failing with a traceback.
+- A keystore race could permanently lose the ntfy topic, the ZCode token or the
+  E2E key; unreadable secrets now say so instead of looking unconfigured.
+- The refresh button could store an invalid topic and silently drop the E2E key;
+  the pairing dialog no longer reopens after a rotation.
+- A custom accent was unreadable on `classic-light` (2.07:1); accent tokens now
+  use the real card surface of every theme.
+- Muted notifications never reported a chat that was already red; an untimed 5 h
+  reset silenced all later resets.
+- The widget and the collector could pick different active chats while an
+  annotation was being written.
+- The free ntfy quota (250 messages/day/IP) is budgeted; the active-chat
+  debounce is 60 s, which is also what the phone can actually show.
+- Reading all annotations on every state push cost ~134 ms per push with 1000
+  chats; parsed entries are cached by (mtime, size).
+- A Bearer JWT could follow a redirect to another host; JSON files with a BOM no
+  longer stop the collector.
+- "No voucher" while ZCode showed one: the voucher feed is version-gated and the
+  widget advertised an outdated client version (bug 7 in `docs/BUGFIXES.md`).
+
 ## 1.0.0 — 2026-11-25
 
 First public release. Two Android builds from one codebase:

@@ -169,7 +169,7 @@ Ask whether the user wants Android. If no, skip to Phase 4. If yes, also ask whi
 
 `AG Context` sets `BuildConfig.ZCODE_ENABLED = false`: no ZCode sign-in button, no ZCode card and no ZCode network requests. The different application ids allow both builds to be installed side by side.
 
-The `v1.0.0` release already ships both signed community APKs (`AG-Widgets-1.0.0.apk`, `AG-Context-1.0.0.apk`, each with a `.sha256`). If the user only wants a ready APK, verify the checksum and skip the build; never hand over a locally built APK made without `-Pcommunity=true`.
+The `v1.1.0` release already ships both signed community APKs (`AG-Widgets-1.1.0.apk`, `AG-Context-1.1.0.apk`, each with a `.sha256`). If the user only wants a ready APK, verify the checksum and skip the build; never hand over a locally built APK made without `-Pcommunity=true`.
 
 Tooling probe (all read-only):
 
