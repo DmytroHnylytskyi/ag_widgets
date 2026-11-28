@@ -13,7 +13,7 @@ import urllib.request
 import webbrowser
 from typing import Any
 
-from . import crypto, paths, zcode
+from . import crypto, net, paths, zcode
 
 INIT_URL = f"{zcode.ZCODE_ORIGIN}/api/v1/oauth/cli/init"
 POLL_BASE = f"{zcode.ZCODE_ORIGIN}/api/v1/oauth/cli/poll"
@@ -91,13 +91,13 @@ def _post_json(url: str, body: dict[str, Any], headers: dict[str, str]) -> dict[
         method="POST",
         headers={**headers, "Content-Type": "application/json", "Accept": "application/json"},
     )
-    with urllib.request.urlopen(request, timeout=20) as response:
+    with net.urlopen(request, timeout=20) as response:
         return json.loads(response.read().decode("utf-8", errors="replace"))
 
 
 def _get_json(url: str, headers: dict[str, str]) -> dict[str, Any]:
     request = urllib.request.Request(url, method="GET", headers={**headers, "Accept": "application/json"})
-    with urllib.request.urlopen(request, timeout=20) as response:
+    with net.urlopen(request, timeout=20) as response:
         return json.loads(response.read().decode("utf-8", errors="replace"))
 
 

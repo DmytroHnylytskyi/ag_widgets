@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from . import crypto, paths
+from . import crypto, net, paths
 
 ZCODE_ORIGIN = "https://zcode.z.ai"
 # Fallback for machines without a local ZCode desktop install. The marketing
@@ -254,7 +254,7 @@ def _http_get_json(
     """
     try:
         request = urllib.request.Request(url, method="GET", headers=headers)
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with net.urlopen(request, timeout=timeout) as response:
             status = response.status
             raw = response.read(MAX_BODY_BYTES + 1)
     except urllib.error.HTTPError as error:
