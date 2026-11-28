@@ -15,7 +15,9 @@ const { logError } = require('./logger');
 
 const COLLECTOR_TIMEOUT_MS = 90_000;
 const ZCODE_AUTH_TIMEOUT_MS = 30_000;
-const ACTIVE_PUBLISH_THROTTLE_MS = 15_000;
+// Matches MIN_ACTIVE_SWITCH_INTERVAL_SEC in agwidgets/status.py: the phone
+// polls every 15 minutes, so a faster trigger only spends the ntfy budget.
+const ACTIVE_PUBLISH_THROTTLE_MS = 60_000;
 const MAX_OUTPUT_BYTES = 128 * 1024;
 const MAX_STDERR_BYTES = 8 * 1024;
 

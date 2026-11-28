@@ -14,9 +14,14 @@ from . import antigravity, context, crypto, ntfy, paths, zcode
 
 MIN_PUBLISH_INTERVAL_SEC = 600  # 10 minutes
 HEARTBEAT_INTERVAL_SEC = 3600  # 60 minutes
-# Debounce tab-switch thrashing; mirrors ACTIVE_PUBLISH_THROTTLE_MS = 15_000
-# in desktop/src/main/collector.js so an active chat switch reaches the phone in ~15-20 s.
-MIN_ACTIVE_SWITCH_INTERVAL_SEC = 15
+# ntfy.sh accepts 250 messages per day per IP (``https://ntfy.sh/v1/tiers``).
+# Leave headroom for manual refreshes and for a second PC behind the same NAT:
+# exceeding the quota does not fail loudly, the channel just goes quiet.
+MAX_DAILY_PUBLISHES = 200
+# The phone polls the topic every 15 minutes in the background, so a shorter
+# debounce only burns the daily budget without being seen. Mirrors
+# ACTIVE_PUBLISH_THROTTLE_MS = 60_000 in desktop/src/main/collector.js.
+MIN_ACTIVE_SWITCH_INTERVAL_SEC = 60
 
 
 def _as_dict(value: Any) -> dict[str, Any]:
@@ -42,6 +47,16 @@ def _as_float(value: Any) -> float:
     except (OverflowError, TypeError, ValueError):
         return 0.0
     return number if math.isfinite(number) else 0.0
+
+
+def _as_int(value: Any) -> int:
+    """Coerce a stored counter to a non-negative int; garbage becomes ``0``."""
+    if isinstance(value, bool):
+        return 0
+    try:
+        return max(0, int(value))
+    except (OverflowError, TypeError, ValueError):
+        return 0
 
 
 def _tri_state(value: Any) -> bool | None:
@@ -278,6 +293,11 @@ def run_once(
     return result
 
 
+def _publish_day_key(now_ts: float) -> str:
+    """UTC day used for the ntfy message budget (its quota resets daily)."""
+    return datetime.fromtimestamp(now_ts, tz=timezone.utc).strftime("%Y-%m-%d")
+
+
 def _publish_if_due(
     *,
     state_dir: Path,
@@ -363,6 +383,10 @@ def _publish_locked(
     current_context = _as_dict(status.get("context_summary"))
     active_changed = previous_context.get("conversation_id") != current_context.get("conversation_id")
 
+    day_key = _publish_day_key(now_ts)
+    stored_day = publish_state.get("day_key")
+    day_count = _as_int(publish_state.get("day_count")) if stored_day == day_key else 0
+
     should_publish = (
         force_publish
         or last_published_ts == 0.0
@@ -382,6 +406,15 @@ def _publish_locked(
             "would_publish": bool(should_publish),
             "changed": changed,
         }
+    elif should_publish and day_count >= MAX_DAILY_PUBLISHES:
+        # The daily quota is spent: stay quiet and say why, instead of hammering a
+        # server that has already stopped accepting messages for this IP.
+        publish_info = {
+            "published": False,
+            "reason": "daily_budget",
+            "day_count": day_count,
+            "max_daily": MAX_DAILY_PUBLISHES,
+        }
     elif should_publish:
         ok, detail = ntfy.publish(
             topic,
@@ -399,6 +432,8 @@ def _publish_locked(
                     "last_payload": status,
                     "e2e_enabled": e2e_enabled,
                     "server": server_url,
+                    "day_key": day_key,
+                    "day_count": day_count + 1,
                 },
             )
     return publish_info

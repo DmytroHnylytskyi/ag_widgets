@@ -232,7 +232,7 @@ The mode can be changed later from Settings → **Диагностика** (Diag
 - Tap **⟳** on the widget → direct parallel refresh (ntfy + ZCode, 4 s timeout) that does not wait for the background WorkManager cycle.
 - Drag the widget vertically → the extra context bar appears when there is room.
 - Clearing the `ntfy_topic` and saving immediately drops the cached PC data and cancels pending quota-reset reminders; the ZCode token is kept.
-- After you switch chats on the PC, the desktop publishes the new active chat with a 15 s throttle (expect ~15–20 s end to end), so press **⟳** on the phone to pick it up.
+- After you switch chats on the PC, the desktop publishes the new active chat with a 60 s debounce (ntfy.sh allows 250 messages per day per IP), so press **⟳** on the phone to pick it up.
 
 ## OEM battery optimization
 
@@ -265,7 +265,7 @@ Verification: after these settings, tap **⟳**, wait one WorkManager cycle (15 
 | `secrets_storage: fail` (DPAPI cannot decrypt after a Windows profile/user migration) | `python collector\collector.py --doctor-json` | The ciphertext belongs to the old Windows profile. Re-enter the token with `--set-token-stdin` and let the collector create a new topic; do not copy `secrets.json` between machines. |
 | **AG Context** has no ZCode card or sign-in button | — | Expected: `BuildConfig.ZCODE_ENABLED = false`, so there is no ZCode client by design. Install **AG Widgets** (`dev.agwidgets`) if you want vouchers and balance on the phone. |
 | Android widget does not update in the background | `python collector\collector.py --doctor --online` on the PC | Apply the OEM battery/autostart settings above; check that the topic on the phone matches `--show-topic`. |
-| The phone shows the wrong/old chat | `python collector\collector.py --doctor-json` (look at `annotations_dir`) | Chat switching is debounced ~15–20 s; open a chat in Antigravity so annotation files exist, then press **⟳** on the phone. |
+| The phone shows the wrong/old chat | `python collector\collector.py --doctor-json` (look at `annotations_dir`) | Chat switching is debounced 60 s; open a chat in Antigravity so annotation files exist, then press **⟳** on the phone. |
 | PC quotas look stale on the phone after changing the topic | `python collector\collector.py --show-topic` | Clearing and saving the `ntfy_topic` on the phone drops the cached PC state and cancels stale reset alerts; paste the current topic and tap **⟳**. |
 | `antigravity_hook` or `antigravity_sidecar` is `warn` | `python collector\collector.py --doctor` | Re-run `.\install.ps1`; the hook and the sidecar are re-registered idempotently. |
 | `ntfy_reachability: fail` behind a corporate proxy or firewall | `python collector\collector.py --doctor --online` | Allow `https://ntfy.sh` and `https://zcode.z.ai` outbound; without them the phone cannot receive PC data. |

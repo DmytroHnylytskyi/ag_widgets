@@ -448,7 +448,7 @@ class RunOnceTests(RunOnceFixture):
         self.assertTrue((self.state / "status.json").exists())
 
     def test_active_switch_within_min_interval_is_throttled(self):
-        self.assertEqual(status.MIN_ACTIVE_SWITCH_INTERVAL_SEC, 15)
+        self.assertEqual(status.MIN_ACTIVE_SWITCH_INTERVAL_SEC, 60)
         self._write_two_conversations()
         self.detect.return_value = {"id": "b", "title": "B"}
         self._write_publish_state(
@@ -462,19 +462,20 @@ class RunOnceTests(RunOnceFixture):
         self.assertFalse(result["publish"]["published"])
         self.assertEqual(result["publish"]["reason"], "throttled_or_unchanged")
 
-    def test_active_switch_after_20s_publishes(self):
+    def test_active_switch_just_below_the_debounce_is_throttled(self):
+        # 15 s debounce burned the ntfy daily quota without being visible: the
+        # phone polls every 15 minutes anyway. The new floor is 60 s.
         self._write_two_conversations()
         self.detect.return_value = {"id": "b", "title": "B"}
         self._write_publish_state(
-            time.time() - 20,
+            time.time() - (status.MIN_ACTIVE_SWITCH_INTERVAL_SEC - 1),
             {"context_summary": {"conversation_id": "a", "active": False}},
         )
 
         result = status.run_once()
 
-        self.publish.assert_called_once()
-        self.assertTrue(result["publish"]["published"])
-        self.assertTrue(result["publish"]["changed"])
+        self.publish.assert_not_called()
+        self.assertEqual(result["publish"]["reason"], "throttled_or_unchanged")
 
     def test_active_switch_after_min_interval_publishes(self):
         self._write_two_conversations()
@@ -489,6 +490,44 @@ class RunOnceTests(RunOnceFixture):
         self.publish.assert_called_once()
         self.assertTrue(result["publish"]["published"])
         self.assertTrue(result["publish"]["changed"])
+
+
+    def _write_day_budget(self, day_key, day_count):
+        """Publish state that already spent part of today's ntfy quota."""
+        self._write_publish_state(0, None)
+        data = json.loads((self.state / "publish_state.json").read_text(encoding="utf-8"))
+        data["day_key"] = day_key
+        data["day_count"] = day_count
+        paths.write_json(self.state / "publish_state.json", data)
+
+    def test_daily_budget_stops_publishing_even_when_forced(self):
+        today = status._publish_day_key(time.time())
+        self._write_day_budget(today, status.MAX_DAILY_PUBLISHES)
+
+        result = status.run_once(force_publish=True)
+
+        self.publish.assert_not_called()
+        self.assertEqual(result["publish"]["reason"], "daily_budget")
+        self.assertEqual(result["publish"]["max_daily"], status.MAX_DAILY_PUBLISHES)
+
+    def test_daily_budget_resets_on_a_new_day(self):
+        self._write_day_budget("2020-01-01", status.MAX_DAILY_PUBLISHES)
+
+        result = status.run_once()
+
+        self.publish.assert_called_once()
+        self.assertTrue(result["publish"]["published"])
+        stored = json.loads((self.state / "publish_state.json").read_text(encoding="utf-8"))
+        self.assertEqual(stored["day_key"], status._publish_day_key(time.time()))
+        self.assertEqual(stored["day_count"], 1)
+
+    def test_successful_publish_counts_towards_the_daily_budget(self):
+        result = status.run_once()
+        self.assertTrue(result["publish"]["published"])
+
+        stored = json.loads((self.state / "publish_state.json").read_text(encoding="utf-8"))
+        self.assertEqual(stored["day_count"], 1)
+        self.assertEqual(stored["day_key"], status._publish_day_key(time.time()))
 
     def test_heartbeat_publishes_without_changes(self):
         self._write_context()
