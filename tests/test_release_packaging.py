@@ -446,6 +446,30 @@ class ReleaseWorkflowStaticTests(unittest.TestCase):
                 f"unexpected third-party action: {target!r}",
             )
 
+    def test_every_action_is_pinned_to_a_commit_sha(self) -> None:
+        # A tag can be moved to different code; only a 40-character commit SHA
+        # cannot. The workflows run with repository write access, so a repointed
+        # tag would execute someone else's code on every release.
+        for workflow in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
+            text = workflow.read_text(encoding="utf-8")
+            for line in text.splitlines():
+                match = re.search(r"uses:\s*([^\s#]+)", line)
+                if not match:
+                    continue
+                target = match.group(1).strip("'\"")
+                if target.startswith("./"):
+                    continue
+                self.assertRegex(
+                    target,
+                    r"@[0-9a-f]{40}$",
+                    f"{workflow.name}: {target!r} must be pinned to a commit SHA",
+                )
+                self.assertRegex(
+                    line,
+                    r"#\s*v\d+(\.\d+){1,2}",
+                    f"{workflow.name}: keep the human-readable tag next to the SHA: {line.strip()!r}",
+                )
+
     def test_no_dangerous_shell_patterns(self) -> None:
         text = self._text()
         self.assertIsNone(
