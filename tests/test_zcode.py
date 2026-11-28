@@ -7,6 +7,7 @@ import http.client
 import io
 import json
 import os
+import struct
 import sys
 import tempfile
 import unittest
@@ -121,6 +122,43 @@ class ZCodeParsingTests(unittest.TestCase):
         self.assertEqual(
             zcode._extract_claim_coupon(_banner_touch()),
             ("visible", "p1", "Claim"),
+        )
+
+    def test_extract_claim_coupon_in_banner_success_popup(self):
+        # A campaign may keep the claim button only in the success dialog that
+        # follows a banner's close button.
+        payload = {
+            "code": 0,
+            "data": {
+                "deliveries": [
+                    {
+                        "resource_position": "banner",
+                        "campaign_id": "weekend-build",
+                        "banner": {
+                            "title": {"format": "plaintext", "content": "Weekend build"},
+                            "buttons": [
+                                {"text": {"content": "Later"}, "action": {"type": "close"}},
+                            ],
+                            "success_popup": {
+                                "title": {"content": "Success"},
+                                "buttons": [
+                                    {
+                                        "text": {"content": "Claim 300M"},
+                                        "action": {
+                                            "type": "claim_zcode_plan",
+                                            "args": {"plan_id": "voucher-nested"},
+                                        },
+                                    }
+                                ],
+                            },
+                        },
+                    }
+                ]
+            },
+        }
+        self.assertEqual(
+            zcode._extract_claim_coupon(payload),
+            ("visible", "voucher-nested", "Claim 300M"),
         )
 
     def test_extract_claim_coupon_none(self):
@@ -279,6 +317,92 @@ class ZCodeParsingTests(unittest.TestCase):
         for value in (True, False, None, float("inf"), float("-inf"), float("nan")):
             with self.subTest(value=value):
                 self.assertIsNone(zcode._to_number(value))
+
+
+class ZCodeClientHeaderTests(unittest.TestCase):
+    """The marketing feed is gated on the client version and language."""
+
+    def setUp(self):
+        self._version_cache = zcode._APP_VERSION_CACHE
+        zcode._APP_VERSION_CACHE = None
+        self.addCleanup(self._restore_cache)
+
+    def _restore_cache(self):
+        zcode._APP_VERSION_CACHE = self._version_cache
+
+    def test_marketing_requests_advertise_the_detected_client(self):
+        with mock.patch.object(zcode, "_http_get_json", return_value=(200, None, None)) as http_get, \
+                mock.patch.object(zcode, "zcode_app_version", return_value="4.0.0"), \
+                mock.patch.object(zcode, "client_language", return_value="en-US"):
+            zcode.query_zcode_api("token", "mid")
+
+        touch_headers = http_get.call_args_list[0].args[1]
+        self.assertEqual(touch_headers["X-ZCode-App-Version"], "4.0.0")
+        self.assertEqual(touch_headers["X-Client-Language"], "en-US")
+
+    def test_stale_version_and_russian_locale_are_gone(self):
+        # Regression guard: the two header values that hid every campaign.
+        with mock.patch.object(zcode, "_http_get_json", return_value=(200, None, None)) as http_get:
+            zcode.query_zcode_api("token", "mid")
+
+        headers = http_get.call_args_list[0].args[1]
+        self.assertNotEqual(headers["X-ZCode-App-Version"], "3.5.0")
+        self.assertNotEqual(headers["X-Client-Language"], "ru-RU")
+
+    def test_version_reads_installed_asar(self):
+        package = json.dumps({"name": "@zcode/desktop", "version": "9.9.9"}).encode("utf-8")
+        header = json.dumps(
+            {"files": {"package.json": {"size": len(package), "offset": "0"}}}
+        ).encode("utf-8")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app_dir = Path(temp_dir)
+            resources = app_dir / "resources"
+            resources.mkdir()
+            (resources / "app.asar").write_bytes(
+                struct.pack("<I", 4)
+                + struct.pack("<I", 8 + len(header))
+                + struct.pack("<I", len(header))
+                + struct.pack("<I", len(header))
+                + header
+                + package
+            )
+            with mock.patch.object(zcode, "_app_dirs", return_value=[app_dir]):
+                self.assertEqual(zcode.zcode_app_version(), "9.9.9")
+
+    def test_app_dir_env_is_the_first_candidate(self):
+        with mock.patch.dict(os.environ, {zcode.APP_DIR_ENV: r"C:\Portable\ZCode"}):
+            self.assertEqual(zcode._app_dirs()[0], Path(r"C:\Portable\ZCode"))
+
+    def test_version_env_override_wins(self):
+        with mock.patch.dict(os.environ, {zcode.APP_VERSION_ENV: "1.2.3"}):
+            self.assertEqual(zcode.zcode_app_version(), "1.2.3")
+
+    def test_version_falls_back_without_an_install(self):
+        with mock.patch.object(zcode, "_app_dirs", return_value=[]):
+            self.assertEqual(zcode.zcode_app_version(), zcode.ZCODE_APP_VERSION)
+
+    def test_unreadable_asar_falls_back(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app_dir = Path(temp_dir)
+            (app_dir / "resources").mkdir()
+            (app_dir / "resources" / "app.asar").write_bytes(b"not an asar")
+            with mock.patch.object(zcode, "_app_dirs", return_value=[app_dir]):
+                self.assertEqual(zcode.zcode_app_version(), zcode.ZCODE_APP_VERSION)
+
+    def test_chinese_system_asks_for_chinese_campaigns(self):
+        with mock.patch.object(zcode.locale, "getlocale", return_value=("zh_CN", "utf-8")):
+            self.assertEqual(zcode.client_language(), "zh-CN")
+
+    def test_other_locales_normalize_to_english(self):
+        for name in ("ru_RU", "Ukrainian_Ukraine", "de_DE", "", None):
+            with self.subTest(name=name), mock.patch.object(
+                zcode.locale, "getlocale", return_value=(name, None)
+            ):
+                self.assertEqual(zcode.client_language(), "en-US")
+
+    def test_language_env_override_wins(self):
+        with mock.patch.dict(os.environ, {zcode.CLIENT_LANGUAGE_ENV: "zh-CN"}):
+            self.assertEqual(zcode.client_language(), "zh-CN")
 
 
 class ZCodeStateTests(unittest.TestCase):

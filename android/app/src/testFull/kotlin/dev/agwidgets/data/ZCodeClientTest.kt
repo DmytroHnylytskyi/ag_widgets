@@ -4,6 +4,7 @@ import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 import java.net.URI
+import java.util.Locale
 
 /** Fixed fallback clock (epoch seconds) used by every balance test. */
 private const val FIXED_NOW_SEC = 1_766_000_000.0
@@ -98,6 +99,59 @@ class ZCodeClientTest {
         assertEquals("plan-77", result.planId)
         assertEquals("Активировать", result.matched)
         assertNull(result.errorKind)
+    }
+
+    @Test
+    fun touchClaimInBannerSuccessPopupIsVisible() {
+        val body = json(
+            """
+            {
+              "code": 0,
+              "data": {
+                "deliveries": [
+                  {
+                    "resource_position": "banner",
+                    "campaign_id": "weekend-build",
+                    "banner": {
+                      "title": {"content": "ZCODE WEEKEND BUILD"},
+                      "buttons": [
+                        {"text": {"content": "Later"}, "action": {"type": "close"}}
+                      ],
+                      "success_popup": {
+                        "title": {"content": "Success"},
+                        "buttons": [
+                          {
+                            "text": {"content": "Claim 300M"},
+                            "action": {
+                              "type": "claim_zcode_plan",
+                              "args": {"plan_id": "plan-nested"}
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+            """
+        )
+
+        val result = parseTouchResponse(body, 200)
+
+        assertEquals(ZCodeStatus.COUPON_VISIBLE, result.couponState)
+        assertEquals("plan-nested", result.planId)
+        assertEquals("Claim 300M", result.matched)
+        assertNull(result.errorKind)
+    }
+
+    @Test
+    fun clientLanguageNormalizesNonChineseToEnglish() {
+        assertEquals("zh-CN", zcodeClientLanguage(Locale.forLanguageTag("zh-CN")))
+        assertEquals("zh-CN", zcodeClientLanguage(Locale.forLanguageTag("zh")))
+        assertEquals("en-US", zcodeClientLanguage(Locale.forLanguageTag("ru-RU")))
+        assertEquals("en-US", zcodeClientLanguage(Locale.forLanguageTag("uk-UA")))
+        assertEquals("en-US", zcodeClientLanguage(Locale.forLanguageTag("de-DE")))
     }
 
     @Test

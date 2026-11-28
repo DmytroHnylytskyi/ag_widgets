@@ -35,6 +35,7 @@ REQUIRED_ZCODE_CASES = (
     "server_time_milliseconds",
     "used_units_fallback_no_plans",
     "banner_voucher_visible",
+    "banner_success_popup_claim_visible",
     "popup_voucher_visible",
     "empty_deliveries_absent",
     "missing_deliveries_api_changed",

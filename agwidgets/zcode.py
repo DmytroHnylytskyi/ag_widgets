@@ -5,7 +5,10 @@ from __future__ import annotations
 import hashlib
 import http.client
 import json
+import locale
 import math
+import os
+import struct
 import urllib.error
 import urllib.request
 import uuid
@@ -16,11 +19,20 @@ from typing import Any
 from . import crypto, paths
 
 ZCODE_ORIGIN = "https://zcode.z.ai"
-ZCODE_APP_VERSION = "3.5.0"
+# Fallback for machines without a local ZCode desktop install. The marketing
+# feed is gated on the client version, so this must stay close to the current
+# release; ``zcode_app_version`` reads the installed app when it can.
+ZCODE_APP_VERSION = "4.0.0"
+APP_VERSION_ENV = "AGW_ZCODE_APP_VERSION"  # Explicit escape hatch for tests/forks.
+APP_DIR_ENV = "AGW_ZCODE_APP_DIR"  # Point at a portable ZCode install directory.
+CLIENT_LANGUAGE_ENV = "AGW_ZCODE_CLIENT_LANGUAGE"
 ZCODE_POLL_INTERVAL_SEC = 600  # 10 minutes
 ZCODE_ERROR_RETRY_SEC = 60  # retry failed polls sooner than a healthy one
 ZCODE_RATE_LIMIT_RETRY_SEC = 300  # do not hammer the API after a 429
 MAX_BODY_BYTES = 1_048_576  # 1 MiB cap on API response bodies
+MAX_ASAR_HEADER_BYTES = 32 * 1024 * 1024  # app.asar headers are a few MiB
+MAX_ASAR_PACKAGE_BYTES = 1_048_576  # package.json is tiny; reject the absurd
+_APP_VERSION_CACHE: str | None = None
 
 # Most specific failure first: it wins when both requests disagree.
 _ERROR_PRIORITY = (
@@ -34,6 +46,100 @@ _ERROR_PRIORITY = (
 _ERROR_CACHE_KINDS = frozenset(
     {"network", "server_error", "rate_limited", "parse_failed", "auth_expired"}
 )
+
+
+def _asar_package_version(asar_path: Path) -> str | None:
+    """Read ``version`` from ``package.json`` inside an Electron ``app.asar``.
+
+    The archive starts with a pickle header: a JSON file tree followed by file
+    contents. Only the header and the tiny ``package.json`` blob are read, so
+    this stays cheap even though desktop bundles are hundreds of MiB.
+    """
+    try:
+        with Path(asar_path).open("rb") as handle:
+            prefix = handle.read(16)
+            if len(prefix) < 16:
+                return None
+            header_size = struct.unpack("<I", prefix[8:12])[0]
+            if not 0 < header_size <= MAX_ASAR_HEADER_BYTES:
+                return None
+            raw_header = handle.read(header_size)
+            if len(raw_header) != header_size:
+                return None
+            tree = json.loads(raw_header.decode("utf-8", errors="replace"))
+            entry = ((tree.get("files") or {}).get("package.json") or {})
+            size = int(entry.get("size") or 0)
+            offset = int(entry.get("offset") or 0)
+            if not 0 < size <= MAX_ASAR_PACKAGE_BYTES:
+                return None
+            handle.seek(16 + header_size + offset)
+            package = json.loads(handle.read(size).decode("utf-8", errors="replace"))
+    except (OSError, ValueError, TypeError, AttributeError):
+        return None
+    version = package.get("version") if isinstance(package, dict) else None
+    return version.strip() if isinstance(version, str) and version.strip() else None
+
+
+def _app_dirs() -> list[Path]:
+    """Return candidate ZCode desktop install directories, most likely first."""
+    dirs: list[Path] = []
+    override = os.environ.get(APP_DIR_ENV, "").strip()
+    if override:
+        dirs.append(Path(override))
+    local = os.environ.get("LOCALAPPDATA", "").strip()
+    if local:
+        root = Path(local)
+        dirs.append(root / "Programs" / "ZCode")  # electron-builder NSIS default
+        try:  # Squirrel installs keep ``app-<version>`` next to the launcher.
+            dirs.extend(sorted((root / "ZCode").glob("app-*"), reverse=True))
+        except OSError:
+            pass
+    for variable in ("PROGRAMFILES", "PROGRAMFILES(X86)"):
+        base = os.environ.get(variable, "").strip()
+        if base:
+            dirs.append(Path(base) / "ZCode")
+    return dirs
+
+
+def zcode_app_version() -> str:
+    """Return the ZCode client version to advertise to the marketing feed.
+
+    The feed only returns campaign deliveries to a current client, so a stale
+    hardcoded value silently hides vouchers. Prefer the installed desktop app's
+    own ``package.json``; fall back to the bundled constant when ZCode is not
+    installed locally (standalone phone, CLI-only machines).
+    """
+    override = os.environ.get(APP_VERSION_ENV, "").strip()
+    if override:
+        return override
+    global _APP_VERSION_CACHE
+    if _APP_VERSION_CACHE:
+        return _APP_VERSION_CACHE
+    for app_dir in _app_dirs():
+        version = _asar_package_version(app_dir / "resources" / "app.asar")
+        if version:
+            _APP_VERSION_CACHE = version
+            return version
+    return ZCODE_APP_VERSION
+
+
+def client_language() -> str:
+    """Return the value for ``X-Client-Language``.
+
+    ZCode campaigns are authored in Chinese and English only, so the client
+    normalizes every other system locale to ``en-US`` instead of advertising a
+    locale it cannot localize.
+    """
+    override = os.environ.get(CLIENT_LANGUAGE_ENV, "").strip()
+    if override:
+        return override
+    try:
+        name = str(locale.getlocale()[0] or "").strip().lower()
+    except (TypeError, ValueError):
+        name = ""
+    if name.startswith("zh") or name.startswith("chinese"):
+        return "zh-CN"
+    return "en-US"
 
 
 def load_secrets() -> dict[str, Any]:
@@ -263,6 +369,39 @@ def _parse_timestamp_iso(value: Any) -> str | None:
     return moment.isoformat().replace("+00:00", "Z")
 
 
+def _claim_from_container(container: Any) -> tuple[str, str] | None:
+    """Find a ``claim_zcode_plan`` button in one banner/popup container.
+
+    Returns ``(plan_id, label)`` or ``None``. The label falls back from the
+    button text to the container title because campaign buttons are sometimes
+    icon-only.
+    """
+    if not isinstance(container, dict):
+        return None
+    buttons = container.get("buttons")
+    if not isinstance(buttons, list):
+        return None
+    for button in buttons:
+        if not isinstance(button, dict):
+            continue
+        action = button.get("action")
+        if not isinstance(action, dict) or action.get("type") != "claim_zcode_plan":
+            continue
+        args = action.get("args")
+        plan_id = str((args.get("plan_id") if isinstance(args, dict) else "") or "").strip()
+        text = button.get("text")
+        button_text = ""
+        if isinstance(text, dict):
+            button_text = str(text.get("content") or "").strip()
+        title = container.get("title")
+        title_text = ""
+        if isinstance(title, dict):
+            title_text = str(title.get("content") or "").strip()
+        label = button_text or title_text or f"plan:{plan_id}"
+        return plan_id, label[:100]
+    return None
+
+
 def _extract_claim_coupon(touch_payload: dict[str, Any]) -> tuple[str, str, str]:
     """Return ``(coupon_state, plan_id, label)`` from the marketing touch response."""
     if not isinstance(touch_payload, dict):
@@ -279,29 +418,15 @@ def _extract_claim_coupon(touch_payload: dict[str, Any]) -> tuple[str, str, str]
             continue
         position = item.get("resource_position")
         container = item.get("banner") if position == "banner" else item.get("popup")
-        if not isinstance(container, dict):
-            continue
-        buttons = container.get("buttons") or []
-        if not isinstance(buttons, list):
-            continue
-        for button in buttons:
-            if not isinstance(button, dict):
-                continue
-            action = button.get("action")
-            if not isinstance(action, dict) or action.get("type") != "claim_zcode_plan":
-                continue
-            args = action.get("args")
-            plan_id = str((args.get("plan_id") if isinstance(args, dict) else "") or "").strip()
-            text = button.get("text")
-            button_text = ""
-            if isinstance(text, dict):
-                button_text = str(text.get("content") or "").strip()
-            title = container.get("title")
-            title_text = ""
-            if isinstance(title, dict):
-                title_text = str(title.get("content") or "").strip()
-            label = button_text or title_text or f"plan:{plan_id}"
-            return "visible", plan_id, label[:100]
+        found = _claim_from_container(container)
+        if found is not None:
+            return "visible", found[0], found[1]
+        if position == "banner" and isinstance(container, dict):
+            # A banner's success dialog is the only documented nested button
+            # list; the claim button may live only there.
+            found = _claim_from_container(container.get("success_popup"))
+            if found is not None:
+                return "visible", found[0], found[1]
     return "absent", "", ""
 
 
@@ -405,8 +530,8 @@ def query_zcode_api(token: str, device_mid: str, seq: int = 0) -> dict[str, Any]
     headers = {
         "Authorization": f"Bearer {token.strip()}",
         "X-Device-Mid": device_mid.strip(),
-        "X-Client-Language": "ru-RU",
-        "X-ZCode-App-Version": ZCODE_APP_VERSION,
+        "X-Client-Language": client_language(),
+        "X-ZCode-App-Version": zcode_app_version(),
         "Accept": "application/json",
     }
 

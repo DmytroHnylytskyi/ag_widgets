@@ -20,6 +20,7 @@ import java.time.Instant
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
+import java.util.Locale
 import kotlin.math.roundToLong
 
 /** Coupon probe outcome, kept free of Android types so JVM tests can call it. */
@@ -41,7 +42,9 @@ internal data class BalanceResult(
 
 object ZCodeClient {
     private const val ORIGIN = "https://zcode.z.ai"
-    private const val APP_VERSION = "3.5.0"
+    // The marketing feed only delivers campaigns to a current client, so this
+    // must track ZCode releases; a stale value silently hides every voucher.
+    private const val APP_VERSION = "4.0.0"
 
     suspend fun startOAuthFlow(
         provider: String = "zai",
@@ -125,7 +128,7 @@ object ZCodeClient {
         val headers = mapOf(
             "Authorization" to "Bearer ${token.trim()}",
             "X-Device-Mid" to deviceMid.trim(),
-            "X-Client-Language" to "ru-RU",
+            "X-Client-Language" to zcodeClientLanguage(),
             "X-ZCode-App-Version" to APP_VERSION
         )
         val safeSeq = seq.coerceAtLeast(0)
@@ -317,23 +320,41 @@ internal fun parseTouchResponse(body: JSONObject?, httpCode: Int): TouchResult {
             val delivery = deliveries.optJSONObject(i) ?: continue
             val position = delivery.optString("resource_position")
             val box = if (position == "banner") delivery.optJSONObject("banner") else delivery.optJSONObject("popup")
-            val buttons = box?.optJSONArray("buttons") ?: continue
-            for (j in 0 until buttons.length()) {
-                val button = buttons.optJSONObject(j) ?: continue
-                val action = button.optJSONObject("action") ?: continue
-                if (action.optString("type") != "claim_zcode_plan") continue
-                val planId = action.optJSONObject("args")?.optString("plan_id").orEmpty().trim()
-                val buttonText = button.optJSONObject("text")?.optString("content").orEmpty().trim()
-                val title = box.optJSONObject("title")?.optString("content").orEmpty().trim()
-                val matched = buttonText.ifEmpty { title.ifEmpty { "plan:$planId" } }.take(100)
-                return TouchResult(ZCodeStatus.COUPON_VISIBLE, planId, matched)
-            }
+            val found = claimFromContainer(box)
+                ?: if (position == "banner") claimFromContainer(box?.optJSONObject("success_popup")) else null
+            if (found != null) return found
         }
         TouchResult(ZCodeStatus.COUPON_ABSENT)
     } catch (_: Exception) {
         TouchResult(ZCodeStatus.COUPON_UNKNOWN, errorKind = "parse_failed")
     }
 }
+
+/**
+ * Finds a `claim_zcode_plan` button in one banner/popup container.
+ * A campaign may keep the claim button only in the banner's success dialog.
+ */
+private fun claimFromContainer(box: JSONObject?): TouchResult? {
+    val buttons = box?.optJSONArray("buttons") ?: return null
+    for (j in 0 until buttons.length()) {
+        val button = buttons.optJSONObject(j) ?: continue
+        val action = button.optJSONObject("action") ?: continue
+        if (action.optString("type") != "claim_zcode_plan") continue
+        val planId = action.optJSONObject("args")?.optString("plan_id").orEmpty().trim()
+        val buttonText = button.optJSONObject("text")?.optString("content").orEmpty().trim()
+        val title = box.optJSONObject("title")?.optString("content").orEmpty().trim()
+        val matched = buttonText.ifEmpty { title.ifEmpty { "plan:$planId" } }.take(100)
+        return TouchResult(ZCodeStatus.COUPON_VISIBLE, planId, matched)
+    }
+    return null
+}
+
+/**
+ * The marketing feed serves Chinese and English campaigns only, so every other
+ * locale is advertised as "en-US" instead of a locale it cannot localize.
+ */
+internal fun zcodeClientLanguage(locale: Locale = Locale.getDefault()): String =
+    if (locale.language.equals("zh", ignoreCase = true)) "zh-CN" else "en-US"
 
 /** Parses the billing balance response; never throws. */
 internal fun parseBalanceResponse(

@@ -177,6 +177,66 @@
       }
     },
     {
+      "name": "banner_success_popup_claim_visible",
+      "payload": {
+        "code": 0,
+        "data": {
+          "deliveries": [
+            {
+              "resource_position": "banner",
+              "campaign_id": "weekend-build",
+              "banner": {
+                "title": {
+                  "format": "plaintext",
+                  "content": "ZCODE WEEKEND BUILD"
+                },
+                "description": {
+                  "format": "plaintext",
+                  "content": "GLM-5.3-Flash quota"
+                },
+                "buttons": [
+                  {
+                    "text": {
+                      "format": "plaintext",
+                      "content": "Later"
+                    },
+                    "action": {
+                      "type": "close"
+                    }
+                  }
+                ],
+                "success_popup": {
+                  "title": {
+                    "format": "plaintext",
+                    "content": "Success"
+                  },
+                  "buttons": [
+                    {
+                      "text": {
+                        "format": "plaintext",
+                        "content": "Claim 300M"
+                      },
+                      "action": {
+                        "type": "claim_zcode_plan",
+                        "args": {
+                          "plan_id": "voucher-success-popup"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      },
+      "expected": {
+        "coupon_state": "visible",
+        "plan_id": "voucher-success-popup",
+        "matched": "Claim 300M"
+      }
+    },
+    {
       "name": "popup_voucher_visible",
       "payload": {
         "code": 0,
