@@ -387,4 +387,34 @@ class StatusStoreTest {
         )
         assertEquals("agw-New_topic-1", StatusStore.getTopic(prefs, FakeCipher))
     }
+
+    @Test
+    fun e2eKeyStateIsAbsentWhenNothingWasStored() {
+        assertEquals(E2eKeyState.Absent, StatusStore.e2eKeyState(FakeSharedPreferences(), FakeCipher))
+    }
+
+    @Test
+    fun e2eKeyStateIsPresentForAValidKey() {
+        val prefs = FakeSharedPreferences()
+        prefs.edit().putString("ntfy_e2e_key", "enc:$e2eKey").apply()
+
+        assertEquals(E2eKeyState.Present(e2eKey), StatusStore.e2eKeyState(prefs, FakeCipher))
+    }
+
+    @Test
+    fun e2eKeyStateIsUnreadableWhenTheKeystoreKeyIsGone() {
+        val prefs = FakeSharedPreferences()
+        prefs.edit().putString("ntfy_e2e_key", "enc:$e2eKey").apply()
+
+        // Not Absent: E2E used to be on, so polling must fail closed.
+        assertEquals(E2eKeyState.Unreadable, StatusStore.e2eKeyState(prefs, BrokenCipher))
+    }
+
+    @Test
+    fun e2eKeyStateIsUnreadableForDecryptableGarbage() {
+        val prefs = FakeSharedPreferences()
+        prefs.edit().putString("ntfy_e2e_key", "enc:not-a-key").apply()
+
+        assertEquals(E2eKeyState.Unreadable, StatusStore.e2eKeyState(prefs, FakeCipher))
+    }
 }

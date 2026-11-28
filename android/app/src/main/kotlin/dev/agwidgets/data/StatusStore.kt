@@ -146,20 +146,48 @@ object StatusStore {
         return true
     }
 
-    /** Shared E2E key, or `null` when absent, corrupt or decryptable-but-invalid. */
-    fun getE2eKey(context: Context): String? = getE2eKey(prefs(context), cipher)
+    /**
+     * Current state of the stored E2E key.
+     *
+     * Callers must not treat [E2eKeyState.Unreadable] as "E2E off": a key that
+     * exists but cannot be decrypted means the channel used to be encrypted, and
+     * accepting plaintext then would let anyone who knows the topic forge status.
+     */
+    fun e2eKeyState(context: Context): E2eKeyState = synchronized(lock) {
+        e2eKeyState(prefs(context), cipher)
+    }
+
+    internal fun e2eKeyState(
+        preferences: SharedPreferences,
+        secretCipher: SecretCipher,
+    ): E2eKeyState {
+        val stored = preferences.getString(KEY_NTFY_E2E_KEY, null) ?: return E2eKeyState.Absent
+        val plaintext = secretCipher.decrypt(stored)
+        if (plaintext == null) {
+            markSecretLost(preferences, SECRET_E2E)
+            return E2eKeyState.Unreadable
+        }
+        markSecretHealthy(preferences, SECRET_E2E)
+        val trimmed = plaintext.trim()
+        // Decryptable but not a key: the blob is corrupt, not absent.
+        return if (E2eCrypto.isValidKey(trimmed)) E2eKeyState.Present(trimmed) else E2eKeyState.Unreadable
+    }
+
+    /** Shared E2E key, or `null` when absent or unreadable (see [e2eKeyState]). */
+    fun getE2eKey(context: Context): String? = e2eKey(context)
 
     internal fun getE2eKey(preferences: SharedPreferences, secretCipher: SecretCipher): String? =
-        runCatching {
-            val stored = preferences.getString(KEY_NTFY_E2E_KEY, null) ?: return@runCatching null
-            val plaintext = secretCipher.decrypt(stored)
-            if (plaintext == null) {
-                markSecretLost(preferences, SECRET_E2E)
-                return@runCatching null
-            }
-            markSecretHealthy(preferences, SECRET_E2E)
-            plaintext.trim().takeIf { E2eCrypto.isValidKey(it) }
-        }.getOrNull()
+        e2eKey(preferences, secretCipher)
+
+    private fun e2eKey(preferences: SharedPreferences, secretCipher: SecretCipher): String? =
+        when (val state = e2eKeyState(preferences, secretCipher)) {
+            is E2eKeyState.Present -> state.key
+            else -> null
+        }
+
+    private fun e2eKey(context: Context): String? = synchronized(lock) {
+        e2eKey(prefs(context), cipher)
+    }
 
     fun hasE2eKey(context: Context): Boolean = getE2eKey(context) != null
 

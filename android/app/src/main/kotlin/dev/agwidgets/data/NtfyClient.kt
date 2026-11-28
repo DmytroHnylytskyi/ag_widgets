@@ -31,10 +31,16 @@ object NtfyClient {
         serverUrl: String = E2eCrypto.DEFAULT_NTFY_SERVER,
         e2eKey: String? = null,
         strings: AgStrings = RuStrings,
+        e2eUnreadable: Boolean = false,
     ): Result<String> = withContext(Dispatchers.IO) {
         val clean = topic.trim()
         if (clean.isEmpty() || !clean.matches(TOPIC_PATTERN)) {
             return@withContext Result.failure(IllegalArgumentException("Invalid ntfy topic"))
+        }
+        if (e2eUnreadable) {
+            // E2E was on and the key is gone: fail closed instead of polling for
+            // plaintext, which anyone who knows the topic could forge.
+            return@withContext Result.failure(IllegalStateException(strings.ntfyUnreadableKey))
         }
         val base = E2eCrypto.normalizeNtfyServer(serverUrl)
             ?: return@withContext Result.failure(IllegalArgumentException("Invalid ntfy server"))
@@ -57,7 +63,7 @@ object NtfyClient {
             if (lines.isEmpty()) {
                 return@withContext Result.failure(IllegalStateException(strings.ntfyNoMessages))
             }
-            extractLatestStatusPayload(lines, e2eKey, strings)
+            extractLatestStatusPayload(lines, e2eKey, strings, e2eUnreadable)
         } catch (e: Exception) {
             Result.failure(e)
         } finally {
@@ -89,7 +95,11 @@ object NtfyClient {
         lines: List<String>,
         e2eKey: String?,
         strings: AgStrings = RuStrings,
+        e2eUnreadable: Boolean = false,
     ): Result<String> {
+        if (e2eUnreadable) {
+            return Result.failure(IllegalStateException(strings.ntfyUnreadableKey))
+        }
         // Pick the newest status-shaped message (either an E2E envelope or a
         // plaintext AgStatus), skipping unrelated/malformed events on the topic.
         val payload = lines.asReversed().firstNotNullOfOrNull { line ->

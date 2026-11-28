@@ -13,6 +13,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import dev.agwidgets.BuildConfig
 import dev.agwidgets.data.AgStatus
+import dev.agwidgets.data.E2eKeyState
 import dev.agwidgets.data.NtfyClient
 import dev.agwidgets.data.StatusStore
 import dev.agwidgets.data.ZCodeClient
@@ -107,12 +108,14 @@ private suspend fun refreshNtfy(context: Context, timeoutMs: Int): Boolean {
     val topic = if (mode == StatusStore.MODE_ZCODE) "" else StatusStore.getTopic(context)
     if (topic.isBlank()) return false
 
+    val e2eState = StatusStore.e2eKeyState(context)
     val res = NtfyClient.fetchLatestMessage(
         topic,
         timeoutMs,
         StatusStore.getNtfyServer(context),
-        StatusStore.getE2eKey(context),
-        s,
+        e2eKey = (e2eState as? E2eKeyState.Present)?.key,
+        strings = s,
+        e2eUnreadable = e2eState is E2eKeyState.Unreadable,
     )
     return res.fold(
         onSuccess = { jsonText ->

@@ -123,4 +123,28 @@ class NtfyClientTest {
         )
         assertNull(NtfyClient.extractLatestStatusPayload(emptyList()))
     }
+
+    @Test
+    fun unreadableKeyFailsClosedInsteadOfAcceptingPlaintext() {
+        val lines = listOf(ndjson(statusJson))
+
+        val result = NtfyClient.extractLatestStatusPayload(lines, null, e2eUnreadable = true)
+
+        assertTrue(result.isFailure)
+        assertEquals(
+            "E2E-ключ не читается: ключ Android сброшен. Отсканируйте QR-код с ПК заново.",
+            result.exceptionOrNull()?.message,
+        )
+    }
+
+    @Test
+    fun theSamePlaintextIsAcceptedWhenE2eWasNeverConfigured() {
+        // The distinction the fail-closed rule rests on: Absent is plaintext by
+        // design, Unreadable is a broken key and must not fall back to plaintext.
+        val lines = listOf(ndjson(statusJson))
+
+        val result = NtfyClient.extractLatestStatusPayload(lines, null)
+
+        assertTrue(result.isSuccess)
+    }
 }

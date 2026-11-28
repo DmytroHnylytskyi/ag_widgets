@@ -408,6 +408,7 @@ data class NtfyStrings(
     val wrongKey: String,
     val badJson: String,
     val expectedE2e: String,
+    val unreadableKey: String,
 )
 
 /** [title]. */
@@ -823,6 +824,7 @@ data class AgStrings(
     val ntfyWrongKey: String get() = ntfy.wrongKey
     val ntfyBadJson: String get() = ntfy.badJson
     val ntfyExpectedE2e: String get() = ntfy.expectedE2e
+    val ntfyUnreadableKey: String get() = ntfy.unreadableKey
 
     // E2E and pairing errors
     val e2eUnsupportedVersion: String get() = e2e.unsupportedVersion
@@ -1224,6 +1226,7 @@ val RuStrings: AgStrings = AgStrings(
         wrongKey = "Неверный E2E-ключ — отсканируйте новый QR с ПК",
         badJson = "Неверный JSON в сообщении ntfy",
         expectedE2e = "Ожидалось зашифрованное сообщение (E2E)",
+        unreadableKey = "E2E-ключ не читается: ключ Android сброшен. Отсканируйте QR-код с ПК заново.",
     ),
     e2e = E2eStrings(
         unsupportedVersion = "Неподдерживаемая версия E2E-сообщения",
@@ -1604,6 +1607,7 @@ val EnStrings: AgStrings = AgStrings(
         wrongKey = "Wrong E2E key — scan a new QR code from your PC",
         badJson = "Invalid JSON in the ntfy message",
         expectedE2e = "Expected an encrypted message (E2E)",
+        unreadableKey = "The E2E key is unreadable: the Android key was reset. Scan the QR code from your PC again.",
     ),
     e2e = E2eStrings(
         unsupportedVersion = "Unsupported E2E message version",

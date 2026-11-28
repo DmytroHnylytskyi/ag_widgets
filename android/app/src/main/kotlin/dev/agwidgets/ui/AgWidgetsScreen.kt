@@ -60,6 +60,7 @@ import dev.agwidgets.BuildConfig
 import dev.agwidgets.R
 import dev.agwidgets.data.AgStatus
 import dev.agwidgets.data.E2eCrypto
+import dev.agwidgets.data.E2eKeyState
 import dev.agwidgets.data.NtfyClient
 import dev.agwidgets.data.PairingConfig
 import dev.agwidgets.data.StatusStore
@@ -376,11 +377,13 @@ internal fun AgWidgetsScreen(
             val messages = mutableListOf<String>()
 
             if (mode != StatusStore.MODE_ZCODE && topic.isNotBlank()) {
+                val e2eState = StatusStore.e2eKeyState(context)
                 NtfyClient.fetchLatestMessage(
                     topic,
                     serverUrl = StatusStore.getNtfyServer(context),
-                    e2eKey = StatusStore.getE2eKey(context),
+                    e2eKey = (e2eState as? E2eKeyState.Present)?.key,
                     strings = s,
+                    e2eUnreadable = e2eState is E2eKeyState.Unreadable,
                 ).fold(
                     onSuccess = { jsonText ->
                         val parsed = AgStatus.fromJson(jsonText)
