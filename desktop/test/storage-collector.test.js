@@ -60,23 +60,26 @@ test('parseAnnotation extracts the title and last_user_view_time', () => {
     '}',
   ].join('\n');
 
-  assert.deepEqual(storage.parseAnnotation(text, 1), {
+  assert.deepEqual(storage.parseAnnotation(text), {
     title: 'Orbit App',
     viewedAt: 1700000000,
   });
 });
 
-test('parseAnnotation falls back to mtime seconds when the view time is absent', () => {
+test('parseAnnotation never invents a view time from the mtime', () => {
   const text = 'annotations {\n  title: "Orbit App"\n}\n';
-  assert.deepEqual(storage.parseAnnotation(text, 1700000555), {
+  assert.deepEqual(storage.parseAnnotation(text), {
     title: 'Orbit App',
-    viewedAt: 1700000555,
+    // The mtime is a tie break in scanAnnotations(), not a view time: the
+    // collector (agwidgets/context.py) reads a missing timestamp as 0, and both
+    // sides must pick the same active chat.
+    viewedAt: 0,
   });
 });
 
 test('parseAnnotation returns an empty title when the annotation has none', () => {
   const text = 'annotations {\n  last_user_view_time {\n    seconds: 1700000000\n  }\n}\n';
-  const parsed = storage.parseAnnotation(text, 0);
+  const parsed = storage.parseAnnotation(text);
   assert.equal(parsed.title, '');
   assert.equal(parsed.viewedAt, 1700000000);
 });
@@ -85,13 +88,53 @@ test('parseAnnotation never throws for null or non-string input', () => {
   for (const value of [null, undefined, 42, { title: 'object' }]) {
     let parsed;
     assert.doesNotThrow(() => {
-      parsed = storage.parseAnnotation(value, 1700000000);
+      parsed = storage.parseAnnotation(value);
     });
     assert.equal(parsed.title, '');
   }
 });
 
 // --- detectActiveChat ------------------------------------------------------
+
+test('a half-written annotation with a fresh mtime does not hijack the active chat', () => {
+  const dir = makeDir('annotations-partial');
+  const nowMs = Date.now();
+  const nowSec = Math.floor(nowMs / 1000);
+
+  // The chat the user is reading was viewed an hour ago.
+  writeAnnotation(dir, 'orbit.pbtxt', {
+    title: 'Orbit App',
+    viewedSeconds: nowSec - 3600,
+    mtimeMs: nowMs - 3600 * 1000,
+  });
+  // Antigravity is mid-write on another annotation: the title is there, the
+  // view time is not yet, and the mtime is "now".
+  writeAnnotation(dir, 'partial.pbtxt', {
+    title: 'Other Chat',
+    mtimeMs: nowMs,
+  });
+
+  const active = storage.detectActiveChat(dir);
+  assert.ok(active);
+  assert.equal(
+    active.id,
+    'orbit',
+    'agwidgets/context.py picks the timestamped chat; the widget must agree',
+  );
+});
+
+test('annotations without any view time fall back to the newest mtime', () => {
+  const dir = makeDir('annotations-mtime-tiebreak');
+  const nowMs = Date.now();
+
+  writeAnnotation(dir, 'older.pbtxt', { title: 'Older', mtimeMs: nowMs - 10 * 60 * 1000 });
+  writeAnnotation(dir, 'newer.pbtxt', { title: 'Newer', mtimeMs: nowMs - 60 * 1000 });
+
+  const active = storage.detectActiveChat(dir);
+  assert.ok(active);
+  assert.equal(active.id, 'newer');
+  assert.equal(active.viewedAt, 0, 'no invented view time is reported');
+});
 
 test('detectActiveChat prefers last_user_view_time over a newer file mtime', () => {
   const dir = makeDir('annotations-priority');

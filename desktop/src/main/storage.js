@@ -70,23 +70,29 @@ function writeJsonAtomic(filePath, data) {
 
 /**
  * Extract the title and last-view timestamp from one Antigravity annotation.
- * Never throws: a file without a title or timestamp falls back gracefully.
+ *
+ * A missing `last_user_view_time` yields `viewedAt: 0` — never the file mtime.
+ * `agwidgets/context.py` treats it the same way and uses mtime only as a tie
+ * break, so substituting mtime here made a half-written annotation (title
+ * already written, timestamp not yet) look like the newest chat in the widget
+ * while the collector kept publishing the one the user was actually reading.
  */
-function parseAnnotation(text, fallbackViewedAtSeconds) {
+function parseAnnotation(text) {
   const source = typeof text === 'string' ? text : '';
   const title = source.match(/title\s*:\s*"([^"]*)"/);
   const viewed = source.match(/last_user_view_time\s*:?\s*\{\s*seconds\s*:\s*(\d+)/);
   return {
     title: title ? title[1] : '',
-    viewedAt: viewed ? Number(viewed[1]) : fallbackViewedAtSeconds,
+    viewedAt: viewed ? Number(viewed[1]) : 0,
   };
 }
 
 /**
  * Read every annotation once and derive both derived views from that pass.
  *
- * `activeChat` is the file with the latest `last_user_view_time` (mtime only as
- * a fallback when the timestamp is missing). `chatTitles` maps every
+ * `activeChat` is the file with the latest `last_user_view_time`; the mtime only
+ * breaks ties, matching `agwidgets/context.py` so the widget and the published
+ * status never disagree about the active chat. `chatTitles` maps every
  * conversation id with a non-empty trimmed title to that title. Only ids and
  * titles are exposed; message text never leaves Antigravity. A single
  * unreadable file is skipped; an unreadable directory yields no results.
@@ -106,7 +112,7 @@ function scanAnnotations(dir = ANNOTATIONS_DIR) {
     const filePath = path.join(dir, entry.name);
     try {
       const mtimeMs = fs.statSync(filePath).mtimeMs;
-      const parsed = parseAnnotation(fs.readFileSync(filePath, 'utf8'), Math.round(mtimeMs / 1000));
+      const parsed = parseAnnotation(fs.readFileSync(filePath, 'utf8'));
       const id = entry.name.replace(/\.pbtxt$/, '');
       const trimmedTitle = typeof parsed.title === 'string' ? parsed.title.trim() : '';
       if (trimmedTitle) chatTitles[id] = trimmedTitle;
