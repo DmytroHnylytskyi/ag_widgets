@@ -86,7 +86,8 @@ describe('dictionary parity', () => {
     const ru = i18n.keys('ru');
     const en = i18n.keys('en');
 
-    assert.equal(ru.length, 343, 'the desktop dictionary manifest pins 343 keys');
+    // Bump together with STRINGS: the count catches a key added to one locale only.
+    assert.equal(ru.length, 349, 'the desktop dictionary manifest pins 349 keys');
     assert.equal(en.length, ru.length);
     assert.deepEqual(en, ru, 'both locales must expose identical keys in identical order');
     assert.deepEqual([...new Set(ru)], ru, 'keys must be unique');

@@ -156,7 +156,10 @@ function isTrustedAuthorizeUrl(value) {
  */
 async function zcodeLogin(deps = {}) {
   const { fetchJsonImpl = fetchJsonWithRetry, logErrorImpl = logError } = deps || {};
-  if (loginInFlight) return { ok: false, error: 'Login already in progress' };
+  if (loginInFlight) {
+    // The renderer localizes by code; the English text stays for logs/tests.
+    return { ok: false, error_code: 'login_in_progress', error: 'Login already in progress' };
+  }
   loginInFlight = true;
   const controller = new AbortController();
   cancelController = controller;

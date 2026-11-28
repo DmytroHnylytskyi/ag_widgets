@@ -558,7 +558,7 @@
     } catch (error) {
       failed = true;
       refreshButton.classList.add('error');
-      refreshButton.title = t('titlebar.refreshFailed', { message: error.message });
+      refreshButton.title = AGW.format.describeError(error.message, t);
       refreshTimer = setTimeout(() => {
         refreshTimer = null;
         refreshButton.classList.remove('error');
@@ -646,7 +646,7 @@
       const result = await bridge.zcodeLogin();
       if (attempt !== loginAttempt) return;
       if (!result || !result.ok) {
-        throw new Error((result && result.error) || t('dashboard.zcode.loginFailed'));
+        throw new Error(AGW.format.describeLoginError(result, t));
       }
 
       AGW.zcode.setLogin(

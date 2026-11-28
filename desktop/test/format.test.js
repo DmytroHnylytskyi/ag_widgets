@@ -177,3 +177,45 @@ describe('module exports', () => {
     );
   });
 });
+
+// --- wave 2 i18n regressions (BUGFIXES #18) -------------------------------
+
+it('formatEndDate follows the interface language, not the OS locale', () => {
+  const iso = '2026-12-05T10:00:00Z';
+
+  assert.match(fmt.formatEndDate(iso, 'ru'), /^05[.]12$/, 'RU uses DD.MM');
+  assert.match(fmt.formatEndDate(iso, 'en'), /^12[/]05$/, 'EN uses MM/DD');
+  assert.equal(fmt.formatEndDate(iso), fmt.formatEndDate(iso, 'ru'), 'RU stays the default');
+  assert.equal(fmt.formatEndDate('', 'en'), '');
+  assert.equal(fmt.formatEndDate('not-a-date', 'en'), '');
+});
+
+it('describeError localizes known collector failures and keeps the detail', () => {
+  const keys = [];
+  const translate = (key, vars) => {
+    keys.push(key);
+    return vars && vars.message ? `${key}:${vars.message}` : key;
+  };
+
+  assert.equal(fmt.describeError('another collector run is active: lock', translate), 'errors.busy');
+  assert.equal(fmt.describeError('config.json is not valid JSON', translate), 'errors.config');
+  assert.equal(fmt.describeError('cannot write status.json: disk full', translate), 'errors.write');
+  assert.equal(fmt.describeError('', translate), 'errors.generic');
+
+  const unknown = fmt.describeError('AGY exploded at step 3', translate);
+  assert.match(unknown, /^errors[.]withDetail:AGY exploded at step 3$/);
+  assert.ok(keys.length >= 5, 'every branch asks the dictionary');
+});
+
+it('describeLoginError uses the error code, then the raw message, then the fallback', () => {
+  const translate = (key) => key;
+
+  assert.equal(
+    fmt.describeLoginError({ ok: false, error_code: 'login_in_progress', error: 'Login already in progress' }, translate),
+    'dashboard.zcode.loginInProgress',
+    'a known code must never surface the English main-process text',
+  );
+  assert.equal(fmt.describeLoginError({ ok: false, error: 'network down' }, translate), 'network down');
+  assert.equal(fmt.describeLoginError(null, translate), 'dashboard.zcode.loginFailed');
+});
+

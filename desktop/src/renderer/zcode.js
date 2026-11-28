@@ -272,7 +272,7 @@
 
     const coupon = describeCoupon(zcode, lang);
     const balance = balanceInfo(zcode, lang);
-    const endsDate = formatEndDate(zcode.ends_at);
+    const endsDate = formatEndDate(zcode.ends_at, lang);
     const endsText = endsDate ? ` · ${tr('dashboard.zcode.endsAt', { date: endsDate }, lang)}` : '';
 
     if (bar && barFill && showBalanceBar && balance.percent !== null) {

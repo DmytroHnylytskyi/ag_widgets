@@ -67,11 +67,54 @@
     return i18n.formatCountdown(iso, nowMs, lang);
   }
 
-  function formatEndDate(iso) {
+  /** `DD.MM` for RU, `MM/DD` for EN; the interface language decides, not the OS. */
+  function formatEndDate(iso, lang = 'ru') {
     if (!iso) return '';
     const date = new Date(iso);
     if (Number.isNaN(date.getTime())) return '';
-    return date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+    const locale = lang === 'en' ? 'en-US' : 'ru-RU';
+    return date.toLocaleDateString(locale, { day: '2-digit', month: '2-digit' });
+  }
+
+  /**
+   * Short localized description of a collector error.
+   *
+   * The Python side speaks English (`config.json is not valid JSON`,
+   * `another collector run is active`), so showing `error.message` verbatim put
+   * English fragments into a Russian UI. Known failures get their own line; an
+   * unknown one keeps the detail, but inside a localized frame.
+   */
+  function describeError(message, translate) {
+    const text = String(message == null ? '' : message).trim();
+    const tr = typeof translate === 'function' ? translate : () => '';
+    const lower = text.toLowerCase();
+    if (lower.includes('another collector run') || lower.includes('already refreshing')) {
+      return tr('errors.busy');
+    }
+    if (lower.includes('config') || lower.includes('not valid json') || lower.includes('secret')) {
+      return tr('errors.config');
+    }
+    if (lower.includes('cannot write') || lower.includes('read-only') || lower.includes('disk')) {
+      return tr('errors.write');
+    }
+    if (!text) return tr('errors.generic');
+    return tr('errors.withDetail', { message: text.slice(0, 120) });
+  }
+
+  /**
+   * Text for a failed sign-in attempt.
+   *
+   * The main process reports a stable `error_code` for known cases, so the UI
+   * can answer in its own language instead of showing `Login already in
+   * progress` in a Russian window.
+   */
+  function describeLoginError(result, translate) {
+    const tr = typeof translate === 'function' ? translate : () => '';
+    if (result && result.error_code === 'login_in_progress') {
+      return tr('dashboard.zcode.loginInProgress');
+    }
+    if (result && result.error) return String(result.error);
+    return tr('dashboard.zcode.loginFailed');
   }
 
   function clamp(value, min, max) {
@@ -111,6 +154,8 @@
     prettyModel,
     formatCountdown,
     formatEndDate,
+    describeError,
+    describeLoginError,
     clamp,
     shortAge,
     computeZone,
@@ -127,6 +172,8 @@
       prettyModel,
       formatCountdown,
       formatEndDate,
+      describeError,
+      describeLoginError,
       clamp,
       shortAge,
       computeZone,
