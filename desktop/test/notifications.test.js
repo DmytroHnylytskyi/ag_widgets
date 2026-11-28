@@ -465,3 +465,73 @@ test("evaluateNotifications does not mutate the caller's runtime state", () => {
 test.after(() => {
   fs.rmSync(tmpRoot, { recursive: true, force: true });
 });
+
+// --- audit regressions (wave 2, BUGFIXES #9) ------------------------------
+
+test('switching notifications on reports a chat that is already red', () => {
+  freshPrefsDir('enable-while-red');
+  const muted = { ...notifications.DEFAULT_PREFERENCES, enabled: false };
+
+  let result = notifications.evaluateNotifications(null, RED_STATE(), muted, {
+    notifiedRedChats: new Set(),
+  });
+  assert.deepEqual(result.events, [], 'the baseline is quiet');
+  result = notifications.evaluateNotifications(RED_STATE(), RED_STATE(), muted, {
+    notifiedRedChats: result.notifiedRedChats,
+  });
+  assert.deepEqual(result.events, [], 'muted polls stay quiet');
+  assert.deepEqual(
+    [...result.notifiedRedChats],
+    [],
+    'muting must not pre-mark the chat as warned, or enabling could never speak',
+  );
+
+  const enabled = { ...muted, enabled: true };
+  result = notifications.evaluateNotifications(RED_STATE(), RED_STATE(), enabled, {
+    notifiedRedChats: result.notifiedRedChats,
+  });
+  assert.equal(result.events.length, 1, 'turning notifications on must surface a red chat');
+  assert.equal(result.events[0].kind, 'context_red');
+
+  const again = notifications.evaluateNotifications(RED_STATE(), RED_STATE(), enabled, {
+    notifiedRedChats: result.notifiedRedChats,
+  });
+  assert.deepEqual(again.events, [], 'and exactly once');
+});
+
+test('a red chat at startup is quiet, but switching to another red chat warns', () => {
+  freshPrefsDir('startup-vs-switch');
+  const bothRed = (activeId) =>
+    stateWith({
+      conversations: { a: RED_CONV(), b: RED_CONV() },
+      last: activeId,
+      activeId,
+    });
+
+  assert.deepEqual(notifications.handleStateUpdate(bothRed('a')), [], 'startup is a baseline');
+  assert.deepEqual(notifications.handleStateUpdate(bothRed('a')), [], 'no repeat for the same chat');
+  assert.equal(notifications.handleStateUpdate(bothRed('b')).length, 1, 'the other chat warns');
+});
+
+test('a second reset without reset_time notifies again', () => {
+  freshPrefsDir('reset-without-time');
+  const at = (fraction) =>
+    stateWith({
+      conversations: { a: RED_CONV() },
+      last: 'a',
+      activeId: 'a',
+      buckets: [bucket({ remaining_fraction: fraction, reset_time: undefined })],
+    });
+
+  assert.deepEqual(notifications.handleStateUpdate(at(0.05)), [], 'baseline');
+  assert.equal(notifications.handleStateUpdate(at(0.9)).length, 1, 'first refill warns');
+  assert.deepEqual(notifications.handleStateUpdate(at(0.05)), [], 'draining is not a reset');
+  assert.equal(notifications.handleStateUpdate(at(0.9)).length, 1, 'second refill warns too');
+
+  const prefs = notifications.getPreferences();
+  assert.ok(
+    !prefs.notified_resets.some((key) => key.endsWith('|changed')),
+    'the old sentinel key must never be persisted again',
+  );
+});
+

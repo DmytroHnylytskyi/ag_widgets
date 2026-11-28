@@ -1,7 +1,9 @@
 package dev.agwidgets.notify
 
 import dev.agwidgets.data.QuotaBucket
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -39,4 +41,29 @@ class NotifierResetTest {
 
         assertTrue(Notifier.shouldNotifyReset(prev, curr))
     }
+
+    @Test
+    fun dedupeKeyPrefersThePreviousResetTime() {
+        assertEquals(
+            "2026-11-25T15:00:00Z",
+            Notifier.resetDedupeKey("2026-11-25T15:00:00Z", "2026-11-25T20:00:00Z"),
+        )
+    }
+
+    @Test
+    fun dedupeKeyFallsBackToTheCurrentResetTime() {
+        assertEquals(
+            "2026-11-25T20:00:00Z",
+            Notifier.resetDedupeKey(null, "2026-11-25T20:00:00Z"),
+        )
+    }
+
+    @Test
+    fun dedupeKeyIsNullWithoutResetTimesSoLaterResetsStillNotify() {
+        // The old code used the "changed" sentinel here, which made the first
+        // untimed reset silence every later one for that bucket.
+        assertNull(Notifier.resetDedupeKey(null, null))
+        assertNull(Notifier.resetDedupeKey("", "not-a-time"))
+    }
 }
+

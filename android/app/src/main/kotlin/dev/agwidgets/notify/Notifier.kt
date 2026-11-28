@@ -54,12 +54,11 @@ object Notifier {
             val prevBucket = prev.buckets.firstOrNull { it.id == currBucket.id } ?: continue
             if (shouldNotifyReset(prevBucket, currBucket)) {
                 val currFrac = currBucket.remainingFraction
-                // Key on the time before the reset so a future timestamp is never marked as notified.
-                val resetKey = validResetKey(prevBucket.resetTime)
-                    ?: validResetKey(currBucket.resetTime)
-                    ?: "changed"
-                if (StatusStore.isResetNotified(context, currBucket.id, resetKey)) continue
-                StatusStore.markResetNotified(context, currBucket.id, resetKey)
+                val resetKey = resetDedupeKey(prevBucket.resetTime, currBucket.resetTime)
+                if (resetKey != null) {
+                    if (StatusStore.isResetNotified(context, currBucket.id, resetKey)) continue
+                    StatusStore.markResetNotified(context, currBucket.id, resetKey)
+                }
                 val pct = currFrac?.takeIf { it.isFinite() }
                     ?.let { s.fill(s.notifAvailablePct, "pct" to (it * 100).roundToInt()) }
                     ?: s.notifLimitReset
@@ -115,6 +114,19 @@ object Notifier {
      * `agy /usage` switches `reset_time` back to the epoch-zero sentinel) or its
      * real reset window moved forward while remaining quota increased.
      */
+    /**
+     * De-duplication key for a quota reset, or `null` when the backend sent no
+     * reset time.
+     *
+     * Keying on the *previous* reset time keeps a future timestamp from being
+     * marked as notified. With no timestamps at all there is nothing stable to
+     * de-duplicate — [shouldNotifyReset] already requires a transition and the
+     * previous snapshot advances on every poll — while the old `"changed"`
+     * sentinel silenced every later reset of the same bucket forever.
+     */
+    internal fun resetDedupeKey(prevResetTime: String?, currResetTime: String?): String? =
+        validResetKey(prevResetTime) ?: validResetKey(currResetTime)
+
     internal fun shouldNotifyReset(prev: QuotaBucket, curr: QuotaBucket): Boolean {
         val prevFrac = prev.remainingFraction
         if (prevFrac == null || !prevFrac.isFinite() || prevFrac >= 0.99) return false

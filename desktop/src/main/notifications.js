@@ -266,12 +266,19 @@ function evaluateNotifications(prevState, currState, prefs, runtimeState = {}) {
       : 'ru';
 
   // First snapshot after startup is a baseline: remember it, notify nothing.
+  // Chats that are already red count as warned so a restart is quiet. While
+  // notifications are muted nothing is seeded: switching them on later must
+  // still report the chat that is red right now (see the red channel below).
   if (prevState == null || currState == null) {
-    return {
-      events: [],
-      nextPrefs: prefsN,
-      notifiedRedChats: cloneSet(runtime.notifiedRedChats),
-    };
+    const baselineChats = cloneSet(runtime.notifiedRedChats);
+    if (prefsN.enabled !== false) {
+      // Quiet restart: the chat that is red right now counts as already warned.
+      // Other red chats are not seeded, so switching to one still warns once.
+      const baselineInfo = contextInfo(currState.context, currState.status, currState.activeChat);
+      const baselineId = baselineInfo.activeId || baselineInfo.selectedId || null;
+      if (baselineId && baselineInfo.level === 'red') baselineChats.add(baselineId);
+    }
+    return { events: [], nextPrefs: prefsN, notifiedRedChats: baselineChats };
   }
 
   if (prefsN.enabled === false) {
@@ -289,18 +296,17 @@ function evaluateNotifications(prevState, currState, prefs, runtimeState = {}) {
   // Channel 1: context red zone. Inform at most once per chat until it leaves
   // the risky zone (green/yellow) or the app restarts.
   const currInfo = contextInfo(currState.context, currState.status, currState.activeChat);
-  const prevInfo = contextInfo(prevState.context, prevState.status, prevState.activeChat);
   const currId = currInfo.activeId || currInfo.selectedId || null;
-  const prevId = prevInfo.activeId || prevInfo.selectedId || null;
 
-  const becameRed = prevId === currId && prevInfo.level !== 'red';
-  const switchedToRedChat = prevId !== currId;
+  // One warning per red episode. The warned-set is the only guard: requiring a
+  // green->red transition in this snapshot meant that a chat which was red when
+  // the app started (or when notifications were switched on) never warned at
+  // all — the baseline below seeds the set, so restarts stay quiet anyway.
   if (
     prefsN.context_red === true &&
     currId &&
     currInfo.level === 'red' &&
-    !redChats.has(currId) &&
-    (becameRed || switchedToRedChat)
+    !redChats.has(currId)
   ) {
     redChats.add(currId);
     const pct =
@@ -398,16 +404,17 @@ function evaluateNotifications(prevState, currState, prefs, runtimeState = {}) {
     if (!isReset) continue;
 
     // Key on the time before the reset so a future timestamp is never marked.
+    // Without any reset_time there is nothing stable to de-duplicate: the
+    // transition itself is the event (previousState advances on every poll), and
+    // the old 'changed' sentinel silenced every later reset of the same bucket.
     const resetKey =
-      validResetKey(prevBucket.reset_time) ||
-      validResetKey(bucket.reset_time) ||
-      'changed';
-    const dedupeKey = `${bucketIdOf(bucket)}|${resetKey}`;
-    if (nextPrefs.notified_resets.includes(dedupeKey)) continue;
+      validResetKey(prevBucket.reset_time) || validResetKey(bucket.reset_time);
+    const dedupeKey = resetKey ? `${bucketIdOf(bucket)}|${resetKey}` : null;
+    if (dedupeKey && nextPrefs.notified_resets.includes(dedupeKey)) continue;
     // A disabled channel must not consume the de-dupe key.
     if (prefsN.quota_5h_reset !== true) continue;
 
-    appendNotifiedReset(nextPrefs, dedupeKey);
+    if (dedupeKey) appendNotifiedReset(nextPrefs, dedupeKey);
     events.push({
       kind: 'quota_5h_reset',
       title: i18n.t(
