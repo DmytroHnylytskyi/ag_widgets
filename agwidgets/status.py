@@ -263,6 +263,14 @@ def run_once(
     except (paths.ConfigReadError, crypto.SecretDecryptError) as exc:
         # Never overwrite a config we could not read: report and keep state intact.
         return {"status_written": False, "error": str(exc)}
+    except TimeoutError as exc:
+        # Another collector holds a state/secrets lock. Skipping this run is the
+        # correct outcome; a traceback would only show up as "no JSON output".
+        return {"status_written": False, "error": f"another collector run is active: {exc}"}
+    except OSError as exc:
+        # Lock or state-directory problems (read-only profile, missing disk) must
+        # reach the desktop as a message, not as a broken pipe of stderr.
+        return {"status_written": False, "error": str(exc)}
 
     now_ts = now.timestamp()
     try:

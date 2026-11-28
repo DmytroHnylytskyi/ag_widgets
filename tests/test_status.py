@@ -908,6 +908,21 @@ class PublishLockTests(RunOnceFixture):
         self.assertEqual(info["reason"], "state_write_failed")
         self.assertIn("disk full", info["detail"])
 
+    def test_lock_timeout_is_reported_instead_of_raised(self):
+        with mock.patch.object(status.paths, "ensure_ntfy_topic", side_effect=TimeoutError("secrets.lock")):
+            result = status.run_once()
+
+        self.assertFalse(result["status_written"])
+        self.assertIn("another collector run is active", result["error"])
+        self.publish.assert_not_called()
+
+    def test_state_directory_io_error_is_reported_instead_of_raised(self):
+        with mock.patch.object(status.paths, "get_e2e_key", side_effect=OSError("disk is gone")):
+            result = status.run_once()
+
+        self.assertFalse(result["status_written"])
+        self.assertIn("disk is gone", result["error"])
+        self.publish.assert_not_called()
 
 if __name__ == "__main__":
     unittest.main()
