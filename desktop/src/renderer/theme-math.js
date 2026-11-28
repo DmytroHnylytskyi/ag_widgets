@@ -19,6 +19,12 @@ const THEME_SURFACES = {
   oled: { card: '#0e1116', dark: true },
   'glass-dark': { card: '#141d2e', dark: true },
   'glass-light': { card: '#f9fafc', dark: false },
+  // classic cards are translucent in CSS: rgba(12,10,16,.9) over #09090b and
+  // rgba(255,255,255,.9) over #ffffff — the values below are the composited
+  // results. The default theme is classic, so leaving them out silently derived
+  // the accent tokens against graphite (#f59e0b gave 2.07:1 on classic-light).
+  'classic-dark': { card: '#0c0a10', dark: true },
+  'classic-light': { card: '#ffffff', dark: false },
 };
 
 /** Fallbacks from the token contract (Desktop §1.1). */

@@ -12,6 +12,8 @@ const math = require('../src/renderer/theme-math.js');
 
 const ACCENTS = ['#60a5fa', '#34d399', '#a78bfa', '#f59e0b', '#f43f5e', '#38bdf8'];
 const MODERN_THEMES = ['graphite', 'paper', 'oled', 'glass-dark', 'glass-light'];
+// Every resolved theme the app can apply, classic included: it is the default.
+const ALL_THEMES = [...MODERN_THEMES, 'classic-dark', 'classic-light'];
 
 describe('parseHex', () => {
   it('accepts long and short hex with or without the hash', () => {
@@ -77,8 +79,18 @@ describe('resolveAccentTokens', () => {
     assert.equal(tokens.onAccent, '#ffffff', 'deep accents need a light label');
   });
 
-  it('keeps every preset accent readable on every modern theme', () => {
-    for (const theme of MODERN_THEMES) {
+  it('covers every resolved theme with a real surface', () => {
+    for (const theme of ALL_THEMES) {
+      assert.ok(
+        math.THEME_SURFACES[theme],
+        `${theme} must have an entry: a missing one falls back to graphite and ` +
+          'derives unreadable accent tokens on light classic',
+      );
+    }
+  });
+
+  it('keeps every preset accent readable on every resolved theme', () => {
+    for (const theme of ALL_THEMES) {
       const surface = math.themeSurface(theme);
       for (const accent of ACCENTS) {
         const tokens = math.resolveAccentTokens(accent, theme);
@@ -97,6 +109,18 @@ describe('resolveAccentTokens', () => {
         );
       }
     }
+  });
+
+  it('fixes the amber-on-classic-light case from the audit', () => {
+    const tokens = math.resolveAccentTokens('#f59e0b', 'classic-light');
+    assert.ok(
+      math.contrastRatio(tokens.accentInk, '#ffffff') >= 4.6,
+      'Pro badge text on the default theme must not stay at 2.07:1',
+    );
+    assert.ok(
+      math.contrastRatio(tokens.accentBar, '#ffffff') >= 3.1,
+      'bar fills must stay visible on the light classic card',
+    );
   });
 
   it('fixes the amber-on-paper case from the audit', () => {
