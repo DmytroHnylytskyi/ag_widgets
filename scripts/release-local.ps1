@@ -141,7 +141,9 @@ foreach ($asset in $Assets) {
 $ApkSigner = Get-ChildItem (Join-Path $env:LOCALAPPDATA 'Android\Sdk\build-tools') -Recurse -Filter 'apksigner.bat' |
     Sort-Object FullName -Descending | Select-Object -First 1
 if (-not $ApkSigner) { Fail 'apksigner.bat not found in the Android SDK' }
-$CertLine = & $ApkSigner.FullName verify --print-certs (Join-Path $Dist $Assets[0].Name) 2>&1 |
+# 2>$null: the JDK prints an unrelated native-access warning on stderr, which
+# would otherwise surface as a NativeCommandError under $ErrorActionPreference=Stop.
+$CertLine = & $ApkSigner.FullName verify --print-certs (Join-Path $Dist $Assets[0].Name) 2>$null |
     Select-String 'certificate SHA-256 digest' | Select-Object -First 1
 if (-not $CertLine) { Fail 'The APK is not signed: refusing to publish' }
 Write-Host "  $($CertLine.Line.Trim())"
