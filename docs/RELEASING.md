@@ -142,8 +142,9 @@ then publishes exactly those files.
 
 `.github/workflows/release.yml` stays in the repository as a **verification
 build**: it runs the tests, builds both flavors and the portable ZIP, and then
-refuses to publish because the signing secrets are absent. That is intentional —
-a `v*` tag must never publish debuggable APKs.
+**skips publishing with a warning** because the signing secrets are absent. That
+is intentional — a `v*` tag must never publish debuggable APKs, and the step that
+does publish also requires `signed == 'true'`.
 
 ## Automated GitHub Releases (not used by default)
 

@@ -286,11 +286,15 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
-      - name: Refuse to publish unsigned builds
+      - name: Skip publishing unsigned builds
         if: (github.event_name == 'push' || inputs.publish == true) && needs.build-android.outputs.signed != 'true'
         run: |
-          echo "::error::Refusing to publish '${RELEASE_TAG}': signing secrets are missing, so the APKs would be community debug builds."
-          exit 1
+          echo "::warning::Publishing '${RELEASE_TAG}' skipped: the signing secrets are absent, so the APKs would be community debug builds. Releases for this repository are built locally with scripts/release-local.ps1."
+          {
+            echo "### Publishing skipped"
+            echo
+            echo "The signing secrets are not configured on purpose; the release is built and published locally with \`scripts/release-local.ps1\`."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish GitHub Release
         if: (github.event_name == 'push' || inputs.publish == true) && needs.build-android.outputs.signed == 'true'

@@ -336,9 +336,9 @@ class ReleaseWorkflowStaticTests(unittest.TestCase):
         self.assertTrue(job, "publish-release job is missing")
 
         self.assertIn(
-            "Refuse to publish unsigned builds",
+            "Skip publishing unsigned builds",
             job,
-            "publishing must be refused when the APKs are unsigned",
+            "an unsigned tag run must skip publishing with a warning, not fail",
         )
         self.assertRegex(
             job,
